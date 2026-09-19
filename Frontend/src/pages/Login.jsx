@@ -20,6 +20,8 @@ import { CardGlare } from "@/components/CardGlare";
 import { AnimatedInput } from "@/components/AnimatedInput";
 import { GoogleButton } from "@/components/GoogleButton";
 import { ValidateOtp } from "@/components/ValidateOtp";
+import { Button1 } from "@/components/Button1";
+import { Button2 } from "@/components/Button2";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -167,7 +169,7 @@ export default function Login() {
                             <span>Verified</span>
                           </div>
                         ) : isEmailFormatValid ? (
-                          <button
+                          <Button2
                             type="button"
                             onClick={handleSendVerificationOtp}
                             disabled={isSendingOtp}
@@ -181,7 +183,7 @@ export default function Login() {
                             ) : (
                               <span>Verify</span>
                             )}
-                          </button>
+                          </Button2>
                         ) : null
                       }
                     />
@@ -277,26 +279,20 @@ export default function Login() {
                     </div>
 
                     {/* LOGIN BUTTON */}
-                    <button
+                    <Button1
                       type="submit"
                       disabled={isSubmitting}
-                      className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#850E35] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#6F0A2B] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                      className="w-full rounded-xl py-3.5 text-sm font-semibold text-[#FFFBF1] shadow-md shadow-[#850E35]/20 hover:shadow-lg hover:shadow-[#850E35]/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isSubmitting ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin text-white" />
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 size={16} className="animate-spin text-[#FFFBF1]" />
                           <span>Signing in...</span>
-                        </>
+                        </span>
                       ) : (
-                        <>
-                          Sign in
-                          <ArrowRight
-                            size={15}
-                            className="transition-transform group-hover:translate-x-0.5"
-                          />
-                        </>
+                        "Sign in"
                       )}
-                    </button>
+                    </Button1>
                   </form>
 
                   {/* DIVIDER */}

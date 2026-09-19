@@ -3,6 +3,7 @@ import { OTPInput, OTPInputContext } from 'input-otp';
 import { ShieldCheck, Loader2, ArrowRight, RotateCw, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { Button1 } from '@/components/Button1';
 
 /**
  * Individual Digit Slot for OTP Input
@@ -245,23 +246,20 @@ export function ValidateOtp({
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                   className="overflow-hidden"
                 >
-                  <button
+                  <Button1
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full h-11 sm:h-12 rounded-xl bg-[#850E35] text-white text-xs sm:text-sm font-bold hover:bg-[#6e092c] transition shadow-md shadow-[#850E35]/15 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                    className="w-full rounded-xl py-3 text-xs sm:text-sm font-semibold text-[#FFFBF1] shadow-md shadow-[#850E35]/20 hover:shadow-lg hover:shadow-[#850E35]/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSubmitting ? (
-                      <>
-                        <Loader2 size={15} className="animate-spin text-white" />
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 size={15} className="animate-spin text-[#FFFBF1]" />
                         <span>Verifying Code...</span>
-                      </>
+                      </span>
                     ) : (
-                      <>
-                        <span>Verify & Submit Code</span>
-                        <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
-                      </>
+                      "Verify & Submit Code"
                     )}
-                  </button>
+                  </Button1>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -418,23 +416,20 @@ export function ValidateOtp({
           )}
 
           {/* Submit Button */}
-          <button
+          <Button1
             type="submit"
             disabled={otp.length < length || isSubmitting}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#850E35] py-3.5 px-4 text-xs sm:text-sm font-bold text-white shadow-sm transition hover:bg-[#6e092c] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            className="w-full rounded-xl py-3.5 px-4 text-xs sm:text-sm font-semibold text-[#FFFBF1] shadow-md shadow-[#850E35]/20 hover:shadow-lg hover:shadow-[#850E35]/30 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
             {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin text-white" />
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin text-[#FFFBF1]" />
                 <span>Verifying Code...</span>
-              </>
+              </span>
             ) : (
-              <>
-                <span>Verify & Proceed</span>
-                <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
-              </>
+              "Verify & Proceed"
             )}
-          </button>
+          </Button1>
 
           {/* Resend Code Footer */}
           <div className="pt-2 text-center text-xs text-[#850E35]/60 border-t border-[#850E35]/10">

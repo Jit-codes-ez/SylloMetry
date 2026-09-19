@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   FileQuestion,
   Clock,
+  Loader2,
 } from 'lucide-react';
 import { TextAnimate } from '@/components/TextAnimation';
 import { AnimatedInput } from '@/components/AnimatedInput';
@@ -71,6 +72,7 @@ export default function FAQSupport() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [formSubmitted, setFormSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
 
   const toggleAccordion = (id) => {
@@ -87,12 +89,16 @@ export default function FAQSupport() {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    if (!formData.email.trim() || !formData.message.trim()) return;
-    setFormSubmitted(true);
+    if (!formData.email.trim() || !formData.message.trim() || isSubmitting) return;
+    setIsSubmitting(true);
     setTimeout(() => {
-      setFormSubmitted(false);
-      setFormData({ name: '', email: '', message: '' });
-    }, 4000);
+      setIsSubmitting(false);
+      setFormSubmitted(true);
+      setTimeout(() => {
+        setFormSubmitted(false);
+        setFormData({ name: '', email: '', message: '' });
+      }, 4000);
+    }, 750);
   };
 
   return (
@@ -321,10 +327,20 @@ export default function FAQSupport() {
                     <Button2
                       type="submit"
                       variant="default"
-                      className="w-full py-2.5 rounded-xl text-xs font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={isSubmitting}
+                      className="w-full py-2.5 rounded-xl text-xs font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <span>Submit Inquiry</span>
-                      <Send className="w-3.5 h-3.5" />
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin text-white" />
+                          <span>Submitting Inquiry...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Submit Inquiry</span>
+                          <Send className="w-3.5 h-3.5" />
+                        </>
+                      )}
                     </Button2>
                   </form>
                 )}

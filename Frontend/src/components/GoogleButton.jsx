@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -52,7 +53,7 @@ export function GoogleButton({
     >
       {isLoading ? (
         <>
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#850E35]/30 border-t-[#850E35]" />
+          <Loader2 size={16} className="animate-spin text-[#850E35]" />
           <span>{loadingText}</span>
         </>
       ) : (

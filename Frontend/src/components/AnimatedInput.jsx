@@ -47,13 +47,13 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
   const inputId = id || name || `animated-input-${reactId.replace(/:/g, '')}`;
 
   return (
-    <div className={cn('w-full', className)}>
-      <div className="relative flex items-center pt-2">
+    <div className={cn('w-full pt-1.5', className)}>
+      <div className="relative flex items-center">
         {/* Optional Leading Icon */}
         {icon ? (
           <span
             aria-hidden="true"
-            className="absolute top-1/2 left-3.5 -translate-y-1/2 text-[#850E35]/50 pointer-events-none z-10 transition-colors"
+            className="absolute top-1/2 left-3.5 -translate-y-1/2 text-[#850E35]/50 pointer-events-none z-10 flex items-center justify-center transition-colors"
           >
             {icon}
           </span>
@@ -99,7 +99,7 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
 
         {/* Optional Trailing End Element (e.g. eye toggle button) */}
         {endElement ? (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex items-center">
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center">
             {endElement}
           </div>
         ) : null}
@@ -108,7 +108,7 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
         <motion.label
           initial={false}
           animate={{
-            y: isFloating ? -11 : 14,
+            y: isFloating ? -10 : 13,
             x: icon && !isFloating ? 26 : 0,
             scale: isFloating ? 0.82 : 1,
             color: error

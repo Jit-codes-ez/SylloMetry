@@ -30,6 +30,8 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', 'monospace'],
+        serif: ['"Bodoni Moda"', '"Playfair Display"', 'Georgia', 'serif'],
+        display: ['"Bodoni Moda"', '"Playfair Display"', 'serif'],
       },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
   Eye,
   EyeOff,
   Lock,
   Mail,
+  Loader2,
   Sparkles,
   ShieldCheck,
+  CheckCircle2,
   BriefcaseBusiness,
   LayoutDashboard,
   TrendingUp,
@@ -17,6 +19,7 @@ import TextAnimation from '@/components/TextAnimation';
 import { CardGlare } from "@/components/CardGlare";
 import { AnimatedInput } from "@/components/AnimatedInput";
 import { GoogleButton } from "@/components/GoogleButton";
+import { ValidateOtp } from "@/components/ValidateOtp";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -32,6 +35,22 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
+  // Email OTP verification states
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+  const isEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
+
+  const handleSendVerificationOtp = () => {
+    if (!isEmailFormatValid || isSendingOtp) return;
+    setIsSendingOtp(true);
+    setTimeout(() => {
+      setIsSendingOtp(false);
+      setShowOtpInput(true);
+    }, 500);
+  };
+
   const handleGoogleAuth = () => {
     setIsGoogleSubmitting(true);
     setTimeout(() => {
@@ -42,6 +61,11 @@ export default function Login() {
 
   const handleChange = (e) => {
     const { name, value, checked, type } = e.target;
+
+    if (name === "email") {
+      setIsEmailVerified(false);
+      setShowOtpInput(false);
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -61,6 +85,9 @@ export default function Login() {
       newErrors.email = "Please enter your email.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Please enter a valid email.";
+    } else if (!isEmailVerified) {
+      newErrors.email = "Please verify your email address to continue.";
+      setShowOtpInput(true);
     }
 
     if (!formData.password) {
@@ -133,7 +160,65 @@ export default function Login() {
                       error={errors.email}
                       autoComplete="email"
                       placeholder="you@example.com"
+                      endElement={
+                        isEmailVerified ? (
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold select-none">
+                            <CheckCircle2 size={13} />
+                            <span>Verified</span>
+                          </div>
+                        ) : isEmailFormatValid ? (
+                          <button
+                            type="button"
+                            onClick={handleSendVerificationOtp}
+                            disabled={isSendingOtp}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold hover:bg-[#6e092c] transition shadow-xs disabled:opacity-60 cursor-pointer"
+                          >
+                            {isSendingOtp ? (
+                              <>
+                                <Loader2 size={12} className="animate-spin text-white" />
+                                <span>Sending...</span>
+                              </>
+                            ) : (
+                              <span>Verify</span>
+                            )}
+                          </button>
+                        ) : null
+                      }
                     />
+
+                    {/* OTP VERIFICATION COMPONENT (Appears after email with smooth animation) */}
+                    <AnimatePresence>
+                      {showOtpInput && !isEmailVerified && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, y: -8 }}
+                          animate={{ opacity: 1, height: "auto", y: 0 }}
+                          exit={{ opacity: 0, height: 0, y: -8 }}
+                          transition={{ duration: 0.28, ease: "easeOut" }}
+                          className="overflow-hidden"
+                        >
+                          <ValidateOtp
+                            variant="inline"
+                            email={formData.email}
+                            length={6}
+                            onVerify={async (otpCode) => {
+                              // Verify OTP (simulated backend call)
+                              await new Promise((resolve) => setTimeout(resolve, 800));
+                              if (otpCode === "000000") {
+                                throw new Error("Invalid verification code. Please check your inbox.");
+                              }
+                              setIsEmailVerified(true);
+                              setErrors((prev) => ({ ...prev, email: "" }));
+                              setTimeout(() => {
+                                setShowOtpInput(false);
+                              }, 1200);
+                            }}
+                            onResend={async () => {
+                              await new Promise((resolve) => setTimeout(resolve, 700));
+                            }}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {/* PASSWORD */}
                     <div>
@@ -151,7 +236,7 @@ export default function Login() {
                           <button
                             type="button"
                             onClick={() => setShowPassword((prev) => !prev)}
-                            className="rounded-md p-1 text-[#850E35]/40 hover:bg-[#FFF5E4] hover:text-[#850E35]"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#850E35]/40 hover:bg-[#FFF5E4] hover:text-[#850E35] transition-colors focus:outline-none cursor-pointer"
                             aria-label={showPassword ? "Hide password" : "Show password"}
                           >
                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -199,8 +284,8 @@ export default function Login() {
                     >
                       {isSubmitting ? (
                         <>
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          Signing in...
+                          <Loader2 size={16} className="animate-spin text-white" />
+                          <span>Signing in...</span>
                         </>
                       ) : (
                         <>

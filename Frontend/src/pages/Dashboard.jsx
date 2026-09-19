@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
   BriefcaseBusiness,
@@ -8,6 +8,7 @@ import {
   Flame,
   Gauge,
   GraduationCap,
+  Loader2,
   Sparkles,
   Target,
   TrendingUp,
@@ -22,6 +23,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import FileUpload from "@/components/FileUpload";
+import ClassicSkeleton, { DashboardSkeleton } from "@/components/ClassicSkeleton";
 
 const growthData = [
   { month: "Apr", score: 54 },
@@ -395,17 +398,17 @@ function CareerSimulationLab() {
             type="button"
             onClick={runSimulation}
             disabled={isSimulating || selectedSkills.length === 0}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#850E35] px-4 py-3.5 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#6e092c] disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#850E35] px-4 py-3.5 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#6e092c] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
             {isSimulating ? (
               <>
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Running Simulation...
+                <Loader2 size={15} className="animate-spin text-white" />
+                <span>Running Simulation...</span>
               </>
             ) : (
               <>
                 <Sparkles size={14} />
-                Run Simulation
+                <span>Run Simulation</span>
               </>
             )}
           </button>
@@ -413,7 +416,29 @@ function CareerSimulationLab() {
 
         {/* Results */}
         <div className="p-5 sm:p-6">
-          {!simulationRun ? (
+          {isSimulating ? (
+            <div className="flex min-h-[350px] flex-col items-center justify-center text-center p-6 animate-in fade-in duration-200">
+              <div className="relative mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF5E4] text-[#850E35] shadow-xs">
+                <Loader2 size={28} className="animate-spin text-[#850E35]" />
+              </div>
+
+              <span className="mb-2 inline-block rounded-full border border-[#850E35]/15 bg-[#FFF5E4] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#850E35]">
+                Computing Career Trajectory
+              </span>
+
+              <h3 className="text-base font-bold text-[#850E35]">
+                Simulating Skill Impact...
+              </h3>
+
+              <p className="mt-2 max-w-sm text-xs leading-5 text-[#850E35]/55">
+                Calculating vector distance adjustments, weight redistributions, and readiness percentile shifts for {targetRole}.
+              </p>
+
+              <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-[#850E35]/10">
+                <div className="h-full w-full rounded-full bg-gradient-to-r from-[#850E35] via-[#E36A6A] to-[#850E35] animate-pulse" />
+              </div>
+            </div>
+          ) : !simulationRun ? (
             <div className="flex min-h-[350px] flex-col items-center justify-center text-center">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF5E4] text-[#850E35]">
                 <Target size={26} />
@@ -619,7 +644,47 @@ function CareerSimulationLab() {
     </section>
   );
 }
-export default function Dashboard() {
+export default function Dashboard({ isLoading = false }) {
+  const [uploadedCurriculum, setUploadedCurriculum] = useState([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStep, setScanStep] = useState("Parsing document structure...");
+
+  const handleAnalyzeCurriculum = () => {
+    setIsAnalyzing(true);
+    setAnalysisComplete(false);
+    setScanProgress(15);
+    setScanStep("Scanning curriculum document & syllabus topics...");
+
+    setTimeout(() => {
+      setScanProgress(45);
+      setScanStep("Extracting technical competencies & technologies...");
+    }, 500);
+
+    setTimeout(() => {
+      setScanProgress(75);
+      setScanStep("Benchmarking skill proficiency against market hiring criteria...");
+    }, 1100);
+
+    setTimeout(() => {
+      setScanProgress(100);
+      setScanStep("Finalizing skill score intelligence & career roadmap...");
+    }, 1600);
+
+    setTimeout(() => {
+      setIsAnalyzing(false);
+      setAnalysisComplete(true);
+      setTimeout(() => {
+        scrollToSection("analysis-results");
+      }, 100);
+    }, 2000);
+  };
+
+  if (isLoading) {
+    return <DashboardSkeleton theme="skilldelta" shimmer={true} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#FFFBF1] text-[#850E35] pt-24">
       <div className="bg-[#FFFBF1]">
@@ -648,22 +713,173 @@ export default function Dashboard() {
                   you need for your next career goal.
                 </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => scrollToSection("skill-profile")}
-                className="flex w-fit items-center gap-2 rounded-xl bg-[#850E35] px-5 py-3 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#6e092c] active:translate-y-0"
-              >
-                <Sparkles size={15} />
-                Analyze My Skills
-              </button>
             </div>
           </section>
 
           {/* =========================================================
-              STATS
+              CURRICULUM UPLOAD (First Action)
           ========================================================== */}
-          <section className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section id="curriculum-upload" data-reveal className="mb-8 scroll-mt-24">
+            <div className="rounded-2xl border border-[#850E35]/12 bg-white p-6 sm:p-7 shadow-xs">
+              <div className="mb-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#850E35] text-white shadow-xs">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <text x="12" y="16.5" fill="currentColor" fontSize="6.2" fontWeight="900" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" letterSpacing="0.3">PDF</text>
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-bold text-[#850E35]">
+                    Upload Your Academic Curriculum
+                  </h2>
+                </div>
+                <p className="mt-1.5 text-xs text-[#850E35]/60 max-w-2xl leading-relaxed">
+                  Upload your university syllabus, degree course outline, or technical transcript. SkillDelta’s AI parses your course content and benchmarks your skill readiness against real-time industry hiring standards.
+                </p>
+              </div>
+
+              <FileUpload
+                hint="Supported formats: PDF, DOCX, DOC, TXT (Max 15MB)"
+                accept=".pdf,.doc,.docx,.txt"
+                allowsMultiple={false}
+                maxFiles={1}
+                maxSize={15 * 1024 * 1024}
+                onFilesChange={(files) => {
+                  setUploadedCurriculum(files);
+                  setAnalysisComplete(false);
+                  setIsAnalyzing(false);
+                }}
+              />
+
+              {/* Single Analyze My Curriculum Button - Under FileUpload Component */}
+              {uploadedCurriculum.length > 0 && (
+                <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-[#850E35]/10 animate-in fade-in duration-300">
+                  <div className="flex items-center gap-2 text-xs text-[#850E35]/70">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-medium">Curriculum uploaded • Ready for AI skill benchmarking</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="analyze-curriculum-btn"
+                    onClick={handleAnalyzeCurriculum}
+                    disabled={isAnalyzing}
+                    className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#850E35] px-6 py-3.5 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#6e092c] active:translate-y-0 disabled:opacity-60 cursor-pointer"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin text-white" />
+                        <span>Analyzing Curriculum...</span>
+                      </>
+                    ) : analysisComplete ? (
+                      <>
+                        <CircleCheck size={16} />
+                        <span>Curriculum Analyzed</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        <span>Analyze My Curriculum</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* =========================================================
+              AI SCANNING STATE (Shown while curriculum is being scanned)
+          ========================================================== */}
+          {isAnalyzing && (
+            <div className="mb-8 rounded-2xl border border-[#850E35]/20 bg-white p-8 sm:p-10 shadow-xs animate-in fade-in duration-300">
+              <div className="mx-auto max-w-xl text-center">
+                <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#850E35]/20 bg-[#FFF5E4] text-[#850E35] shadow-sm">
+                  <Loader2 size={32} className="animate-spin text-[#850E35]" />
+                </div>
+
+                <span className="mb-2 inline-block rounded-full border border-[#850E35]/15 bg-[#FFF5E4] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#850E35]">
+                  AI Engine Scanning Active
+                </span>
+
+                <h3 className="text-lg font-bold text-[#850E35]">
+                  Analyzing Your Academic Curriculum...
+                </h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-[#850E35]/60">
+                  SkillDelta AI is parsing course content, extracting technical competencies, and benchmarking your skill profile against real-time industry demands.
+                </p>
+
+                <div className="mx-auto mt-6 w-full max-w-md">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#FFF5E4]">
+                    <div
+                      className="h-full rounded-full bg-[#850E35] transition-all duration-300 ease-out"
+                      style={{ width: `${scanProgress}%` }}
+                    />
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[11px] font-semibold text-[#850E35]/65">
+                    <span>{scanStep}</span>
+                    <span>{scanProgress}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =========================================================
+              AWAITING ANALYSIS PLACEHOLDER (Shown until analyzed)
+          ========================================================== */}
+          {!analysisComplete && !isAnalyzing && (
+            <div className="mb-8 rounded-2xl border border-dashed border-[#850E35]/20 bg-white/70 p-8 sm:p-10 text-center shadow-xs">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#850E35]/15 bg-[#FFF5E4] text-[#850E35] shadow-xs">
+                <Sparkles size={24} />
+              </div>
+              <h3 className="text-base font-bold text-[#850E35] sm:text-lg">
+                Awaiting Curriculum Analysis
+              </h3>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-[#850E35]/60">
+                {uploadedCurriculum.length > 0
+                  ? 'Curriculum uploaded! Click "Analyze My Curriculum" above to scan your courses, benchmark skill readiness, and unlock your personalized dashboard.'
+                  : 'Upload your university syllabus, course outline, or technical transcript above to unlock your skill profile, gap analysis, and career benchmarks.'}
+              </p>
+            </div>
+          )}
+
+          {/* =========================================================
+              AFTER COMPONENTS (ANALYZATIONS)
+              Only rendered after the curriculum has been analyzed
+          ========================================================== */}
+          {analysisComplete && (
+            <div id="analysis-results" className="space-y-7 animate-in fade-in slide-in-from-bottom-6 duration-700">
+              {/* Success Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-50/60 p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                    <CircleCheck size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-emerald-950">
+                      Curriculum Analysis Complete
+                    </h3>
+                    <p className="text-xs text-emerald-700/80">
+                      18 technical skills tracked and benchmarked against current hiring standards.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => scrollToSection("curriculum-upload")}
+                  className="text-xs font-bold text-emerald-800 hover:underline shrink-0 text-left sm:text-right"
+                >
+                  Re-analyze or change curriculum ↑
+                </button>
+              </div>
+
+              {/* =========================================================
+                  STATS
+              ========================================================== */}
+              <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               icon={Gauge}
               label="Overall Skill Score"
@@ -1146,6 +1362,9 @@ export default function Dashboard() {
               </div>
             </div>
           </section>
+
+            </div>
+          )}
 
         </div>
       </div>

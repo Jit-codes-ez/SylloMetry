@@ -17,13 +17,7 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isMinimalNavPage =
-    location.pathname === '/signin' ||
-    location.pathname === '/signup' ||
-    location.pathname === '/faq' ||
-    location.pathname === '/terms' ||
-    location.pathname === '/privacy' ||
-    location.pathname === '/documentation';
+  const isMinimalNavPage = location.pathname !== '/';
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

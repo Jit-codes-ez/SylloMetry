@@ -16,6 +16,11 @@
   }
 }
 
+.font-bodoni {
+  font-family: 'Bodoni Moda', Georgia, serif !important;
+  font-optical-sizing: auto;
+}
+
 /* Subtle academic pattern utilities */
 .bg-technical-grid {
   background-size: 36px 36px;

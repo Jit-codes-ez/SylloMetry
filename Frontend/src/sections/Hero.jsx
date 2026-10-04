@@ -85,7 +85,7 @@ export default function Hero() {
 
             {/* Supporting Text */}
             <p className="text-base sm:text-lg text-[#850E35]/85 leading-relaxed mb-8 max-w-xl">
-              SkillDelta uses AI/ML to analyze academic curricula, understand industry skill demand, detect curriculum gaps, and generate evidence-based recommendations for future-ready education.
+              SylloMetry uses AI/ML to analyze academic curricula, understand industry skill demand, detect curriculum gaps, and generate evidence-based recommendations for future-ready education.
             </p>
 
             {/* Action Buttons */}

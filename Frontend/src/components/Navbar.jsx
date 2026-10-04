@@ -130,11 +130,11 @@ export default function Navbar() {
     >
       <ScrollProgressBar className="fixed top-0 inset-x-0 z-[60] h-[3px]" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        {/* Left: SkillDelta Logo */}
+        {/* Left: SylloMetry Logo */}
         <a href="/" className="flex items-center gap-2 group select-none">
           <img
             src="/banner.png"
-            alt="SkillDelta Logo"
+            alt="SylloMetry Logo"
             className="h-20 sm:h-24 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
           />
         </a>

@@ -682,7 +682,7 @@ export default function Dashboard({ isLoading = false }) {
   };
 
   if (isLoading) {
-    return <DashboardSkeleton theme="skilldelta" shimmer={true} />;
+    return <DashboardSkeleton theme="syllometry" shimmer={true} />;
   }
 
   return (
@@ -735,7 +735,7 @@ export default function Dashboard({ isLoading = false }) {
                   </h2>
                 </div>
                 <p className="mt-1.5 text-xs text-[#850E35]/60 max-w-2xl leading-relaxed">
-                  Upload your university syllabus, degree course outline, or technical transcript. SkillDelta’s AI parses your course content and benchmarks your skill readiness against real-time industry hiring standards.
+                  Upload your university syllabus, degree course outline, or technical transcript. SylloMetry’s AI parses your course content and benchmarks your skill readiness against real-time industry hiring standards.
                 </p>
               </div>
 
@@ -807,7 +807,7 @@ export default function Dashboard({ isLoading = false }) {
                   Analyzing Your Academic Curriculum...
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-[#850E35]/60">
-                  SkillDelta AI is parsing course content, extracting technical competencies, and benchmarking your skill profile against real-time industry demands.
+                  SylloMetry AI is parsing course content, extracting technical competencies, and benchmarking your skill profile against real-time industry demands.
                 </p>
 
                 <div className="mx-auto mt-6 w-full max-w-md">

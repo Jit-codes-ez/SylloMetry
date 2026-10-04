@@ -24,7 +24,7 @@ const DOC_SECTIONS = [
     badge: 'Core Engine',
     icon: Cpu,
     description:
-      'SkillDelta is built on an empirical natural language processing and dense vector embedding pipeline that measures the semantic delta between academic curricula and live industry job competencies.',
+      'SylloMetry is built on an empirical natural language processing and dense vector embedding pipeline that measures the semantic delta between academic curricula and live industry job competencies.',
     details: [
       'Pretrained SentenceTransformers (all-MiniLM-L6-v2) for contextual semantic encoding.',
       '384-dimensional dense vector embeddings representing syllabus topics and industry skills.',
@@ -136,7 +136,7 @@ export default function Documentation() {
               duration={0.5}
               className="text-base sm:text-lg text-[#850E35]/75 leading-relaxed"
             >
-              Comprehensive documentation for the SkillDelta curriculum intelligence platform, dense vector embedding pipeline, and semantic matching algorithms.
+              Comprehensive documentation for the SylloMetry curriculum intelligence platform, dense vector embedding pipeline, and semantic matching algorithms.
             </TextAnimate>
           </div>
 

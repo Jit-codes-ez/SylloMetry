@@ -23,9 +23,9 @@ const FAQS = [
   {
     id: '1',
     category: 'AI & Methodology',
-    question: 'How does SkillDelta calculate the semantic delta between academic curricula and industry skills?',
+    question: 'How does SylloMetry calculate the semantic delta between academic curricula and industry skills?',
     answer:
-      'SkillDelta utilizes SentenceTransformers (all-MiniLM-L6-v2) to map both academic course syllabi and industry competency descriptions into dense 384-dimensional vector spaces. It then computes directional cosine distance Delta = 1 - cos(u, v). If the distance is low (similarity >= 0.78), the competence is marked as Matched; if intermediate, Partial Match; and if distant (similarity < 0.55), a critical Skill Gap is flagged.',
+      'SylloMetry utilizes SentenceTransformers (all-MiniLM-L6-v2) to map both academic course syllabi and industry competency descriptions into dense 384-dimensional vector spaces. It then computes directional cosine distance Delta = 1 - cos(u, v). If the distance is low (similarity >= 0.78), the competence is marked as Matched; if intermediate, Partial Match; and if distant (similarity < 0.55), a critical Skill Gap is flagged.',
   },
   {
     id: '2',
@@ -39,7 +39,7 @@ const FAQS = [
     category: 'Curriculum & Academics',
     question: 'Can academic institutions and universities analyze custom syllabi?',
     answer:
-      'Yes. SkillDelta accepts university syllabus files in PDF, Word, and structured Markdown. The parsing subsystem extracts Course Outcomes (COs), Program Educational Objectives (PEOs), unit breakdown, and lab modules before vectorizing.',
+      'Yes. SylloMetry accepts university syllabus files in PDF, Word, and structured Markdown. The parsing subsystem extracts Course Outcomes (COs), Program Educational Objectives (PEOs), unit breakdown, and lab modules before vectorizing.',
   },
   {
     id: '4',
@@ -149,7 +149,7 @@ export default function FAQSupport() {
             duration={0.5}
             className="text-base sm:text-lg text-[#850E35]/75 leading-relaxed"
           >
-            Find quick answers about SkillDelta's AI/ML methodology, syllabus vector evaluation, institutional privacy, and academic research collaborations.
+            Find quick answers about SylloMetry's AI/ML methodology, syllabus vector evaluation, institutional privacy, and academic research collaborations.
           </TextAnimate>
         </div>
 

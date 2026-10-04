@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 // ─── Theme Tokens ─────────────────────────────────────────────────────────────
 
 export const tokens = {
-  skilldelta: {
+  syllometry: {
     page: "bg-[#FFFBF1]",
     section: "bg-white border-[#850E35]/10",
     bone: "bg-[#850E35]/8",
@@ -66,10 +66,10 @@ export const SkeletonBlock = ({
   rounded = "rounded-xl",
   className = "",
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
   style = {},
 }) => {
-  const t = tokens[theme] || tokens.skilldelta;
+  const t = tokens[theme] || tokens.syllometry;
   return (
     <div
       className={`relative overflow-hidden ${t.bone} ${rounded} ${className}`}
@@ -87,7 +87,7 @@ export const SkeletonText = ({
   gap = 12,
   className = "",
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
 }) => (
   <div className={`flex flex-col ${className}`} style={{ gap }}>
     {Array.from({ length: lines }).map((_, i) => (
@@ -109,7 +109,7 @@ export const SkeletonAvatar = ({
   size = 48,
   className = "",
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
 }) => (
   <div className={`relative shrink-0 ${className}`}>
     <SkeletonBlock
@@ -126,10 +126,10 @@ export const SkeletonAvatar = ({
 
 export const SkeletonCard = ({
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
   className = "",
 }) => {
-  const t = tokens[theme] || tokens.skilldelta;
+  const t = tokens[theme] || tokens.syllometry;
   return (
     <div className={`w-full rounded-2xl border ${t.card} p-5 shadow-xs ${className}`}>
       <SkeletonBlock
@@ -156,10 +156,10 @@ export const SkeletonCard = ({
 
 export const SkeletonListItem = ({
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
   className = "",
 }) => {
-  const t = tokens[theme] || tokens.skilldelta;
+  const t = tokens[theme] || tokens.syllometry;
   return (
     <div
       className={`flex w-full items-center gap-4 rounded-xl border ${t.card} p-4 shadow-xs ${className}`}
@@ -192,7 +192,7 @@ export const SkeletonButton = ({
   height = 42,
   className = "",
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
 }) => (
   <SkeletonBlock
     width={width}
@@ -208,7 +208,7 @@ export const SkeletonButton = ({
 
 export const SkeletonInput = ({
   shimmer = true,
-  theme = "skilldelta",
+  theme = "syllometry",
   className = "",
 }) => (
   <div className={`w-full space-y-2 ${className}`}>
@@ -234,9 +234,9 @@ export const SkeletonInput = ({
 export const SkeletonOverlay = ({
   children,
   className = "",
-  theme = "skilldelta",
+  theme = "syllometry",
 }) => {
-  const t = tokens[theme] || tokens.skilldelta;
+  const t = tokens[theme] || tokens.syllometry;
   return (
     <div
       className={`relative overflow-hidden rounded-2xl border ${t.overlay} ${className}`}
@@ -252,8 +252,8 @@ export const SkeletonOverlay = ({
 
 // ─── 9. Full Dashboard Skeleton Screen ────────────────────────────────────────
 
-export const DashboardSkeleton = ({ theme = "skilldelta", shimmer = true }) => {
-  const t = tokens[theme] || tokens.skilldelta;
+export const DashboardSkeleton = ({ theme = "syllometry", shimmer = true }) => {
+  const t = tokens[theme] || tokens.syllometry;
 
   return (
     <div className={`min-h-screen ${t.page} pt-24 pb-16`}>
@@ -335,6 +335,6 @@ export const DashboardSkeleton = ({ theme = "skilldelta", shimmer = true }) => {
 
 // ─── Default Export ───────────────────────────────────────────────────────────
 
-export default function ClassicSkeleton({ theme = "skilldelta", shimmer = true }) {
+export default function ClassicSkeleton({ theme = "syllometry", shimmer = true }) {
   return <DashboardSkeleton theme={theme} shimmer={shimmer} />;
 }

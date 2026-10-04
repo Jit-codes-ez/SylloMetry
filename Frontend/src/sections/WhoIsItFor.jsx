@@ -52,7 +52,7 @@ export default function WhoIsItFor() {
               Who is  
             </TextAnimate> {' '}
             <TextAnimate animation='slideLeft' by='character' delay = {0.2}>
-              <span className="text-[#E36A6A]"> SkillDelta</span> for?
+              <span className="text-[#E36A6A]"> SylloMetry</span> for?
             </TextAnimate>
           </h2>
           <p className="mt-4 text-base sm:text-lg text-[#850E35]/80 leading-relaxed">

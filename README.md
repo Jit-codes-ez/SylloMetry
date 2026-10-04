@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="Frontend/public/banner.png" alt="SkillDelta Logo" width="400">
+  <img src="Frontend/public/banner.png" alt="SylloMetry Logo" width="400">
 </p>
 
 <div align="center">
 
-# SkillDelta — Curriculum evolved by AI, Validated by industry.
+# SylloMetry — Curriculum evolved by AI, Validated by industry.
 
 <!-- [![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Coming_Soon-850E35?style=for-the-badge&logoColor=white)](#) -->
 
@@ -12,17 +12,17 @@
 
 ---
 
-<!-- <img src="Frontend/public/thumbnail.png" alt="SkillDelta Preview" width="100%" style="border-radius: 12px" /> -->
+<!-- <img src="Frontend/public/thumbnail.png" alt="SylloMetry Preview" width="100%" style="border-radius: 12px" /> -->
 
 <!-- --- -->
 
 ## 📖 About
 
-SkillDelta is an AI/ML-powered curriculum intelligence platform that identifies the gap between academic education and evolving industry requirements.
+SylloMetry is an AI/ML-powered curriculum intelligence platform that identifies the gap between academic education and evolving industry requirements.
 
 It analyzes university syllabi, extracts important skills and topics, compares them with industry demand, and generates clear insights about covered, partially covered, missing, and emerging skills.
 
-SkillDelta helps students, educators, and institutions understand whether academic curricula are aligned with the skills required in the modern workplace.
+SylloMetry helps students, educators, and institutions understand whether academic curricula are aligned with the skills required in the modern workplace.
 
 ---
 
@@ -127,7 +127,7 @@ SkillDelta helps students, educators, and institutions understand whether academ
 
 If you found this project useful, consider giving it a star — it helps a lot!
 
-[![GitHub Stars](https://img.shields.io/github/stars/Jit-codes-ez/SkillDelta?style=for-the-badge&color=dc2626&logo=github&logoColor=white)](https://github.com/Jit-codes-ez/SkillDelta/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/Jit-codes-ez/SylloMetry?style=for-the-badge&color=dc2626&logo=github&logoColor=white)](https://github.com/Jit-codes-ez/SylloMetry/stargazers)
 
 </div>
 

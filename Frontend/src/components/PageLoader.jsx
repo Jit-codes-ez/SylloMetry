@@ -73,9 +73,9 @@ export function TopProgressBar({ isLoading = true }) {
 
 /**
  * Full page loading fallback for route transitions and server fetch delays
- * Displays the original Loader2 icon with the SkillDelta branded container.
+ * Displays the original Loader2 icon with the SylloMetry branded container.
  */
-export function PageFallback({ message = 'Loading SkillDelta...' }) {
+export function PageFallback({ message = 'Loading SylloMetry...' }) {
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
       <TopProgressBar isLoading={true} />

@@ -7,7 +7,7 @@ import React, {
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../lib/utils';
 
-// SkillDelta Theme Tokens: Primary (#850E35), Accent (#E36A6A), Background (#FFF5E4 / #FFFBF1)
+// SylloMetry Theme Tokens: Primary (#850E35), Accent (#E36A6A), Background (#FFF5E4 / #FFFBF1)
 const DEFAULT_GLOW_THEME = {
   hue: 340,
   saturation: 81,
@@ -140,7 +140,7 @@ export function GlowHover({
     const existingStyle = element.props.style || {};
     const existingClassName = element.props.className || '';
 
-    // Color theme matching SkillDelta's palette
+    // Color theme matching SylloMetry's palette
     const activeTheme = theme || DEFAULT_GLOW_THEME;
     const hsl = `${activeTheme.hue}, ${activeTheme.saturation}%, ${activeTheme.lightness}%`;
 
@@ -212,7 +212,7 @@ export function GlowHoverCards(props) {
 
 /**
  * Standalone Glow Hover Card Component
- * Styled with SkillDelta's theme (#850E35, #E36A6A, #FFF5E4, #FFFBF1)
+ * Styled with SylloMetry's theme (#850E35, #E36A6A, #FFF5E4, #FFFBF1)
  * All properties preserved: title, description, badge, icon, children, maskSize, glowIntensity, theme, etc.
  */
 export function GlowHoverCard({

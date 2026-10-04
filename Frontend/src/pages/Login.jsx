@@ -141,7 +141,7 @@ export default function Login() {
                     </h2>
 
                     <p className="mt-2 text-xs leading-5 text-[#850E35]/50">
-                      Sign in to continue your SkillDelta journey.
+                      Sign in to continue your SylloMetry journey.
                     </p>
                   </div>
 

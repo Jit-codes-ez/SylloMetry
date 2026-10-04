@@ -44,7 +44,7 @@ export default function PrivacyPolicy() {
     {
       title: '1. Information We Collect',
       content:
-        'When academic institutions, faculty, or students use SkillDelta, we collect curriculum data including Course Outlines, Unit breakdowns, Course Outcomes (COs), and Program Outcomes (PEOs). For account access, we collect basic administrative information (name, institutional email address, department affiliation). We do not collect student personal records, grades, or sensitive private personal identifiers.',
+        'When academic institutions, faculty, or students use SylloMetry, we collect curriculum data including Course Outlines, Unit breakdowns, Course Outcomes (COs), and Program Outcomes (PEOs). For account access, we collect basic administrative information (name, institutional email address, department affiliation). We do not collect student personal records, grades, or sensitive private personal identifiers.',
     },
     {
       title: '2. How Information is Processed',
@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
     {
       title: '4. Third-Party Services & Hosting',
       content:
-        'SkillDelta operates on enterprise cloud infrastructure complying with ISO/IEC 27001 and SOC 2 standards. We do not embed commercial advertising tracking pixels, third-party behavioral profiling cookies, or invasive analytics on university dashboards.',
+        'SylloMetry operates on enterprise cloud infrastructure complying with ISO/IEC 27001 and SOC 2 standards. We do not embed commercial advertising tracking pixels, third-party behavioral profiling cookies, or invasive analytics on university dashboards.',
     },
     {
       title: '5. Retention & Permanent Deletion Protocols',
@@ -74,7 +74,7 @@ export default function PrivacyPolicy() {
     {
       title: '7. Contact Our Data Governance Team',
       content:
-        'For inquiries regarding institutional data agreements, Data Processing Addendums (DPAs), or custom privacy compliance requirements, please email us at research.privacy@skilldelta.edu or contact the Department of Computer Applications research office.',
+        'For inquiries regarding institutional data agreements, Data Processing Addendums (DPAs), or custom privacy compliance requirements, please email us at research.privacy@syllometry.edu or contact the Department of Computer Applications research office.',
     },
   ];
 
@@ -158,7 +158,7 @@ export default function PrivacyPolicy() {
           <div className="pb-6 border-b border-[#850E35]/15">
             <h2 className="text-lg font-bold text-[#850E35] mb-2">Introduction & Scope</h2>
             <p className="text-xs sm:text-sm text-[#850E35]/80 leading-relaxed">
-              SkillDelta (&quot;we,&quot; &quot;our,&quot; or &quot;the Platform&quot;) is an academic curriculum intelligence research initiative dedicated to evaluating higher education syllabi against current industrial competency standards. This Privacy Policy describes our practices regarding the collection, processing, and protection of syllabus files, institutional accounts, and derived vector metadata.
+              SylloMetry (&quot;we,&quot; &quot;our,&quot; or &quot;the Platform&quot;) is an academic curriculum intelligence research initiative dedicated to evaluating higher education syllabi against current industrial competency standards. This Privacy Policy describes our practices regarding the collection, processing, and protection of syllabus files, institutional accounts, and derived vector metadata.
             </p>
           </div>
 
@@ -181,7 +181,7 @@ export default function PrivacyPolicy() {
               Questions regarding our research data governance protocol?
             </div>
             <Button1
-              href="mailto:research.privacy@skilldelta.edu"
+              href="mailto:research.privacy@syllometry.edu"
               className="px-6 py-4 rounded-xl text-xs font-semibold bg-[#850E35] text-[#FFFBF1] hover:bg-[#6F0A2B] transition-all shadow-xs"
             >
               Contact Data Protection

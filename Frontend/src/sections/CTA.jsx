@@ -91,7 +91,7 @@ export default function CTA() {
           transition={{ duration: 0.6, delay: 0.6 }}
           className="text-sm sm:text-base md:text-lg text-[#FFF5E4]/90 max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed px-2"
         >
-          SkillDelta bridges academic curricula and evolving industry skill demand through AI/ML-driven analysis, empirical vector comparison, and evidence-grounded recommendations.
+          SylloMetry bridges academic curricula and evolving industry skill demand through AI/ML-driven analysis, empirical vector comparison, and evidence-grounded recommendations.
         </motion.p>
 
         {/* Action Buttons: Responsive full-width on mobile, side-by-side on tablet/desktop */}

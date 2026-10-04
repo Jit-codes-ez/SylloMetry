@@ -171,7 +171,7 @@ export default function Register() {
                 duration={0.4}
                 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#850E35]/45"
               >
-                Why Join SkillDelta • Member Advantages
+                Why Join SylloMetry • Member Advantages
               </TextAnimation>
             </div>
 
@@ -287,7 +287,7 @@ export default function Register() {
                   </h2>
 
                   <p className="mt-2 text-xs leading-5 text-[#850E35]/50">
-                    Start your personalized SkillDelta journey.
+                    Start your personalized SylloMetry journey.
                   </p>
 
                 </div>
@@ -505,7 +505,7 @@ export default function Register() {
                       />
 
                       <span className="text-[10px] leading-5 text-[#850E35]/55">
-                        I agree to the SkillDelta{" "}
+                        I agree to the SylloMetry{" "}
                         <Link to = "/terms" className="font-semibold text-[#850E35]">
                           Terms of Service
                         </Link>{" "}

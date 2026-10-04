@@ -67,7 +67,7 @@ function AppContent() {
                 <Suspense
                   fallback={
                     <div className="pt-24 pb-16">
-                      <DashboardSkeleton theme="skilldelta" shimmer={true} />
+                      <DashboardSkeleton theme="syllometry" shimmer={true} />
                     </div>
                   }
                 >

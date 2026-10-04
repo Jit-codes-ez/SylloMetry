@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-// Curated default glare colors matching SkillDelta's theme: Primary (#850E35), Accent (#E36A6A), Highlight (#FFFBF1)
+// Curated default glare colors matching SylloMetry's theme: Primary (#850E35), Accent (#E36A6A), Highlight (#FFFBF1)
 const DEFAULT_SHINE_COLORS = ['#850E35', '#E36A6A', '#FFFBF1'];
 
 /**

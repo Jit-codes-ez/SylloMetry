@@ -12,7 +12,7 @@ export default function NotFound() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = '404 - Page Not Available | SkillDelta';
+    document.title = '404 - Page Not Available | SylloMetry';
   }, []);
 
   const handleGoBack = () => {

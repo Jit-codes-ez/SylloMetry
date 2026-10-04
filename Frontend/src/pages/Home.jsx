@@ -9,7 +9,7 @@ import CTA from '../sections/CTA';
 export default function Home() {
   return (
     <>
-      {/* 1. Hero Section with Signature SkillDelta Network Visualizer */}
+      {/* 1. Hero Section with Signature SylloMetry Network Visualizer */}
       <Hero />
 
       {/* 2. Problem Section: Education evolves. Industry evolves faster. */}

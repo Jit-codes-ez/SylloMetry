@@ -89,7 +89,7 @@ export default function Workflow() {
           </div>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#850E35] tracking-tight leading-tight">
           <TextAnimate animation="slideLeft" by="character">
-            How SkillDelta works,
+            How SylloMetry works,
           </TextAnimate>{' '}
             <span className="text-[#E36A6A]">
             <TextAnimate animation="slideLeft" by="character" delay={0.2}>step by step</TextAnimate>

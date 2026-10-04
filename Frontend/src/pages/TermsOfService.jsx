@@ -25,7 +25,7 @@ export default function TermsOfService() {
     {
       icon: Award,
       title: 'Academic Advisory',
-      description: 'SkillDelta provides quantitative, evidence-grounded insights for curriculum benchmarking and BoS committees.',
+      description: 'SylloMetry provides quantitative, evidence-grounded insights for curriculum benchmarking and BoS committees.',
     },
     {
       icon: Scale,
@@ -43,32 +43,32 @@ export default function TermsOfService() {
     {
       title: '1. Acceptance of Terms',
       content:
-        'By accessing or utilizing the SkillDelta platform ("Service"), institutional users, faculty members, academic administrators, and students agree to be bound by these Terms of Service. If you are entering into this agreement on behalf of a university, college, or academic department, you represent that you hold the authority to bind that entity to these terms.',
+        'By accessing or utilizing the SylloMetry platform ("Service"), institutional users, faculty members, academic administrators, and students agree to be bound by these Terms of Service. If you are entering into this agreement on behalf of a university, college, or academic department, you represent that you hold the authority to bind that entity to these terms.',
     },
     {
       title: '2. Educational Advisory & Non-Statutory Disclaimer',
       content:
-        'SkillDelta computes empirical vector similarity scores between academic syllabi and current industrial competency distributions. All similarity indexes, percentage ratings, and curriculum recommendations are informational research outputs designed to empower Boards of Study (BoS) and academic leadership. SkillDelta is not a statutory accreditation body, and its reports do not substitute for official university senate or national regulatory accreditation filings.',
+        'SylloMetry computes empirical vector similarity scores between academic syllabi and current industrial competency distributions. All similarity indexes, percentage ratings, and curriculum recommendations are informational research outputs designed to empower Boards of Study (BoS) and academic leadership. SylloMetry is not a statutory accreditation body, and its reports do not substitute for official university senate or national regulatory accreditation filings.',
     },
     {
       title: '3. Intellectual Property Rights & Syllabus Ownership',
       content:
-        'You retain all copyright, authorship rights, and intellectual property ownership in any syllabus, curriculum outline, or course documentation you submit to the Service. By uploading content, you grant SkillDelta a limited, non-exclusive, worldwide, royalty-free license solely to parse, vectorize, compute mathematical similarities, and generate institutional analytics requested by your account.',
+        'You retain all copyright, authorship rights, and intellectual property ownership in any syllabus, curriculum outline, or course documentation you submit to the Service. By uploading content, you grant SylloMetry a limited, non-exclusive, worldwide, royalty-free license solely to parse, vectorize, compute mathematical similarities, and generate institutional analytics requested by your account.',
     },
     {
       title: '4. Acceptable Use & Account Integrity',
       content:
-        'Users agree not to: (a) attempt to reverse-engineer, decompile, or extract the underlying model weights or dense embedding matrix; (b) conduct automated denial-of-service or scraping attacks against SkillDelta APIs; (c) upload malicious, defamatory, or unlawful documentation; or (d) impersonate other academic institutions or accreditation officers.',
+        'Users agree not to: (a) attempt to reverse-engineer, decompile, or extract the underlying model weights or dense embedding matrix; (b) conduct automated denial-of-service or scraping attacks against SylloMetry APIs; (c) upload malicious, defamatory, or unlawful documentation; or (d) impersonate other academic institutions or accreditation officers.',
     },
     {
       title: '5. Platform Availability & Service Levels',
       content:
-        'While we strive for 99.9% uptime across all analytical endpoints, SkillDelta is provided on an "as is" and "as available" research basis. Periodic maintenance windows, model updates, and dataset recalculations may be scheduled with advance notice provided via institutional dashboards.',
+        'While we strive for 99.9% uptime across all analytical endpoints, SylloMetry is provided on an "as is" and "as available" research basis. Periodic maintenance windows, model updates, and dataset recalculations may be scheduled with advance notice provided via institutional dashboards.',
     },
     {
       title: '6. Limitation of Liability',
       content:
-        'To the maximum extent permitted by applicable law, SkillDelta, its researchers, and partner institutions shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from decisions made during curriculum revisions, hiring outcomes, or university accreditation audits.',
+        'To the maximum extent permitted by applicable law, SylloMetry, its researchers, and partner institutions shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from decisions made during curriculum revisions, hiring outcomes, or university accreditation audits.',
     },
     {
       title: '7. Modifications to Service & Terms',
@@ -78,7 +78,7 @@ export default function TermsOfService() {
     {
       title: '8. Institutional Inquiries & Governing Jurisdiction',
       content:
-        'These terms shall be governed by and construed in accordance with the laws governing higher educational research institutions. For customized university memoranda of understanding (MoUs) or institutional licensing questions, please contact our research board at legal.research@skilldelta.edu.',
+        'These terms shall be governed by and construed in accordance with the laws governing higher educational research institutions. For customized university memoranda of understanding (MoUs) or institutional licensing questions, please contact our research board at legal.research@syllometry.edu.',
     },
   ];
 
@@ -162,7 +162,7 @@ export default function TermsOfService() {
           <div className="pb-6 border-b border-[#850E35]/15">
             <h2 className="text-lg font-bold text-[#850E35] mb-2">Preamble & Agreement</h2>
             <p className="text-xs sm:text-sm text-[#850E35]/80 leading-relaxed">
-              These Terms of Service govern your access to and use of the SkillDelta software application, analytical vector indexes, and curriculum comparison tools. Please read these terms carefully before utilizing our platform for institutional syllabus reviews or accreditation assessments.
+              These Terms of Service govern your access to and use of the SylloMetry software application, analytical vector indexes, and curriculum comparison tools. Please read these terms carefully before utilizing our platform for institutional syllabus reviews or accreditation assessments.
             </p>
           </div>
 
@@ -185,7 +185,7 @@ export default function TermsOfService() {
               Questions regarding institutional academic licensing or MoUs?
             </div>
             <Button1
-              href="mailto:legal.research@skilldelta.edu"
+              href="mailto:legal.research@syllometry.edu"
               className="px-6 py-4 rounded-xl text-xs font-semibold bg-[#850E35] text-[#FFFBF1] hover:bg-[#6F0A2B] transition-all shadow-xs"
             >
               Contact Legal Office

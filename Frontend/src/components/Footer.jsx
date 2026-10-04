@@ -30,7 +30,7 @@ export default function Footer() {
             <a href="/" className="inline-block select-none group">
               <img
                 src="/banner.png"
-                alt="SkillDelta Logo"
+                alt="SylloMetry Logo"
                 className="h-20 sm:h-24 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
               />
             </a>
@@ -87,10 +87,10 @@ export default function Footer() {
             {/* Social & Connect Icon Buttons - Positioned lower above the notice */}
             <div className="flex items-center gap-2.5 pt-8 mt-auto">
               <a
-                href="https://github.com/Jit-codes-ez/SkillDelta"
+                href="https://github.com/Jit-codes-ez/SylloMetry"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="SkillDelta GitHub Repository"
+                aria-label="SylloMetry GitHub Repository"
                 className="flex items-center justify-center w-9 h-9 rounded-xl border border-[#850E35]/20 bg-white/70 text-[#850E35] shadow-xs transition-all duration-200 hover:bg-[#850E35] hover:text-[#FFFBF1] hover:border-[#850E35] hover:shadow-md hover:scale-105 active:scale-95"
               >
                 <GithubIcon className="w-4 h-4" />
@@ -98,7 +98,7 @@ export default function Footer() {
 
               <a
                 href="mailto:jithazraedu@gmail.com"
-                aria-label="Contact SkillDelta via Email"
+                aria-label="Contact SylloMetry via Email"
                 className="flex items-center justify-center w-9 h-9 rounded-xl border border-[#850E35]/20 bg-white/70 text-[#850E35] shadow-xs transition-all duration-200 hover:bg-[#850E35] hover:text-[#FFFBF1] hover:border-[#850E35] hover:shadow-md hover:scale-105 active:scale-95"
               >
                 <Mail className="w-4 h-4" />
@@ -110,7 +110,7 @@ export default function Footer() {
         {/* Bottom Notice */}
         <div className="pt-6 border-t border-[#850E35]/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-[#850E35]/60 text-[11px]">
           <div>
-            © {new Date().getFullYear()} SkillDelta . Designed for curriculum intelligence and academic evaluation . All Rights Reserved.
+            © {new Date().getFullYear()} SylloMetry . Designed for curriculum intelligence and academic evaluation . All Rights Reserved.
           </div>
         </div>
       </div>

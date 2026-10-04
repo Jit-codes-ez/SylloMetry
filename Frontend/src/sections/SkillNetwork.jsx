@@ -584,7 +584,7 @@ export default function SkillNetwork() {
       } else {
         ctx.fillStyle = '#850E35';
         ctx.font      = '600 10px Inter,system-ui,sans-serif';
-        ctx.fillText('SkillDelta AI/ML', cx, cy - 21);
+        ctx.fillText('SylloMetry AI/ML', cx, cy - 21);
         ctx.font      = 'bold 13.5px Inter,system-ui,sans-serif';
         ctx.fillText('Semantic Matching', cx, cy + 1);
         ctx.fillStyle = 'rgba(133,14,53,0.55)';

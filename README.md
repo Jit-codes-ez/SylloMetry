@@ -6,7 +6,7 @@
 
 # SylloMetry — Curriculum evolved by AI, Validated by industry.
 
-[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Coming_Soon-850E35?style=for-the-badge&logoColor=white)](https://syllometry.vercel.app)
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-SYLLOMETRY-850E35?style=for-the-badge&logoColor=white)](https://syllometry.vercel.app)
 
 </div>
 

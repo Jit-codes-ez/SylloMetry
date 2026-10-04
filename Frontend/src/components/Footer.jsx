@@ -35,7 +35,7 @@ export default function Footer() {
               />
             </a>
 
-            <p className="text-[#850E35]/70 max-w-sm leading-relaxed text-sm font-semibold">
+            <p className="text-[#850E35]/70 max-w-2xl leading-relaxed text-lg font-semibold">
               Curriculum evolved by AI, Validated by industry.
             </p>
 

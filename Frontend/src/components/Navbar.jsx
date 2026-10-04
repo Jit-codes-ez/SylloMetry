@@ -135,7 +135,7 @@ export default function Navbar() {
           <img
             src="/banner.png"
             alt="SylloMetry Logo"
-            className="h-15 sm:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+            className="h-8 sm:h-10 w-auto max-w-[160px] sm:max-w-none object-contain transition-transform duration-200 group-hover:scale-105"
           />
         </a>
 

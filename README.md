@@ -6,15 +6,15 @@
 
 # SylloMetry — Curriculum evolved by AI, Validated by industry.
 
-<!-- [![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Coming_Soon-850E35?style=for-the-badge&logoColor=white)](#) -->
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Coming_Soon-850E35?style=for-the-badge&logoColor=white)](https://syllometry.vercel.app)
 
 </div>
 
 ---
 
-<!-- <img src="Frontend/public/thumbnail.png" alt="SylloMetry Preview" width="100%" style="border-radius: 12px" /> -->
+<img src="Frontend/public/thumbnail.png" alt="SylloMetry Preview" width="100%" style="border-radius: 12px" />
 
-<!-- --- -->
+---
 
 ## 📖 About
 

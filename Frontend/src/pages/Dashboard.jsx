@@ -696,14 +696,6 @@ export default function Dashboard({ isLoading = false }) {
           <section id="dashboard-home" data-reveal className="mb-8 scroll-mt-24">
             <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
               <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#E36A6A]" />
-
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#850E35]/45">
-                    Skill Intelligence Dashboard
-                  </span>
-                </div>
-
                 <h1 className="text-3xl font-bold tracking-tight text-[#850E35] sm:text-4xl">
                   Good evening, Saini.
                 </h1>

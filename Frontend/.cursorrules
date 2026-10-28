@@ -1,0 +1,41 @@
+# UI/UX & Design Guidelines
+
+## Strict "Anti-Vibe-Coding" Design Rules
+
+Eliminate generic AI boilerplate templates, decorative padding, and repetitive SaaS gimmicks. Build with deliberate structural hierarchy, authentic typography, and production-grade minimalism.
+
+---
+
+### 1. Card Layout & Structure
+
+- **No Edge Accent Lines:** Do NOT use colored left/top accent strips or indicator rails (e.g., `border-l-4`, `group-hover:border-l-*`, or inset pseudo-stripes)[cite: 1]. Borders must be uniform on all four sides.
+- **No Inset App-Icon Tiles:** Avoid dropping generic Lucide/Heroicons inside deep rounded square background boxes (`rounded-xl p-3 bg-red-950/20 text-red-500`) at the top of content cards[cite: 1]. Use plain inline icons, clear section labels, or typography alone.
+- **No Fake Multi-Layer / Stacked Card Shadows:** Avoid pseudo-layers, stacked card mockups, or offset outlines peeking out behind card corners[cite: 1].
+- **No Groundless Footers / Wandering Arrows:** Avoid tacking arbitrary arrows (`→`, `ChevronRight`) onto non-clickable informational cards or status labels[cite: 1]. If a card is not a link, do not attach navigational affordances.
+- **No Arbitrary Dividers:** Eliminate faint horizontal separators (`border-t border-neutral-200/50`) added solely to park one metadata detail at the bottom[cite: 1]. Use whitespace to structure content.
+
+---
+
+### 2. Typography & Metadata
+
+- **No Monospace Eyebrow Overuse:** Avoid typing sequence tags or phase labels in monospace or tracking fonts (e.g., `font-mono tracking-widest text-xs Phase 01`)[cite: 1]. Use standard system sans-serif hierarchy.
+- **No "AI Pill" Badge Overload:** Do NOT place high-radius pill badges (`rounded-full px-3 py-1 font-semibold text-xs`) in the top-right corner of every single card[cite: 1]. Reserve badges strictly for dynamic, live statuses (e.g., `Active`, `Draft`, `Failed`).
+- **No Gradient Text:** Headings must be solid, high-contrast, opaque typography. Never use `bg-clip-text text-transparent bg-gradient-to-*`.
+- **No Decorative Emojis or Stars:** Do NOT prepend sparkle emojis (`✨`, `🚀`, `⚡`) to headlines, buttons, or badge tags.
+
+---
+
+### 3. Backgrounds, Surfaces & Gradients
+
+- **No Blurred Background Blobs:** Never place oversized, blurred radial gradients (`blur-3xl`, `bg-purple-500/20`, ambient glow spheres) behind hero headers or grid sections.
+- **No Synthetic Dot/Grid Patterns:** Do NOT drop SVG dot-matrix grids, subtle blueprint lines, or isometric tile meshes in section backgrounds. Backgrounds must be clean, solid, and flat.
+- **No Heavy Glassmorphism:** Avoid milky translucent panels with `backdrop-blur-*` or semi-opaque white borders (`border-white/10`). Use solid, opaque container surfaces.
+- **No Rainbow / Gradient Borders:** Do NOT wrap cards in multicolored gradient outlines or glowing 1px gradient wrappers (`p-[1px] bg-gradient-to-r`).
+
+---
+
+### 4. Motion & Micro-Interactions
+
+- **No Hover Floating or Jumping:** Cards must stay grounded. Do NOT apply hover translation lifts (`hover:-translate-y-1` or `hover:-translate-y-2`) or sudden ballooning shadows (`hover:shadow-2xl`).
+- **No Pinging Indicator Dots:** Do NOT add pulsing radar rings (`animate-ping`) next to static labels or text.
+- **Subtle, Tactile Hover Only:** Restrict hover states to quiet border shifts (e.g., `hover:border-neutral-400`), slight background tone changes, or standard text underline transitions.

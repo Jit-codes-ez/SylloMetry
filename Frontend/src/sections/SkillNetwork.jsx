@@ -277,12 +277,13 @@ export default function SkillNetwork() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId;
+    let animId = null;
+    let isVisible = true;
     let width = 0;
     let height = 0;
 
     const isNarrowInitial = typeof window !== 'undefined' && window.innerWidth < 640;
-    const NUM_P = isNarrowInitial ? 22 : 38;
+    const NUM_P = isNarrowInitial ? 14 : 24;
 
     const particles = Array.from({ length: NUM_P }, () => ({
       ci: Math.floor(Math.random() * (dataRef.current.connections.length || 5)),
@@ -292,46 +293,15 @@ export default function SkillNetwork() {
       a: 0.35 + Math.random() * 0.55,
     }));
 
-    const resize = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const dpr  = window.devicePixelRatio || 1;
-      width  = rect.width;
-      height = Math.max(width < 640 ? 460 : 580, rect.height || (width < 640 ? 460 : 580));
-      canvas.width  = width  * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width  = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.resetTransform?.();
-      ctx.scale(dpr, dpr);
-    };
+    let cachedLP = [];
+    let cachedRP = [];
 
-    resize();
-    const ro = new ResizeObserver(resize);
-    if (containerRef.current) ro.observe(containerRef.current);
-
-    let time = 0;
-    let lastTs = performance.now();
-    const noMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion:reduce)').matches;
-
-    let leftPaths  = [];
-    let rightPaths = [];
-
-    const render = (ts) => {
-      const dt = Math.min(0.05, (ts - lastTs) / 1000);
-      lastTs = ts;
-      if (!noMotion) time += dt * 1.1;
-
-      ctx.clearRect(0, 0, width, height);
-
-      const cRect = containerRef.current?.getBoundingClientRect();
-      if (!cRect) {
-        animId = requestAnimationFrame(render);
-        return;
-      }
-
+    const measureNodes = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const cRect = container.getBoundingClientRect();
       const activeData = dataRef.current;
-      const h = hoveredRef.current;
+      if (!activeData) return;
 
       const measure = (el, edge) => {
         if (!el) return null;
@@ -342,12 +312,63 @@ export default function SkillNetwork() {
         };
       };
 
-      const LP = activeData.acadNodes.map((_, i) =>
+      cachedLP = activeData.acadNodes.map((_, i) =>
         measure(leftRefs.current[i], 'right') ?? { x: 0, y: height * (i + 1) / (activeData.acadNodes.length + 1) }
       );
-      const RP = activeData.indNodes.map((_, i) =>
+      cachedRP = activeData.indNodes.map((_, i) =>
         measure(rightRefs.current[i], 'left') ?? { x: width, y: height * (i + 1) / (activeData.indNodes.length + 1) }
       );
+    };
+
+    const resize = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const dpr  = Math.min(window.devicePixelRatio || 1, 2);
+      width  = rect.width;
+      height = Math.max(width < 640 ? 460 : 580, rect.height || (width < 640 ? 460 : 580));
+      canvas.width  = Math.floor(width  * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width  = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.resetTransform?.();
+      ctx.scale(dpr, dpr);
+      measureNodes();
+    };
+
+    resize();
+    const ro = new ResizeObserver(() => {
+      resize();
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
+
+    let time = 0;
+    let lastTs = performance.now();
+    const noMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion:reduce)').matches;
+
+    let leftPaths  = [];
+    let rightPaths = [];
+
+    const render = (ts) => {
+      if (!isVisible) {
+        animId = null;
+        return;
+      }
+
+      const dt = Math.min(0.05, (ts - lastTs) / 1000);
+      lastTs = ts;
+      if (!noMotion) time += dt * 1.1;
+
+      ctx.clearRect(0, 0, width, height);
+
+      const activeData = dataRef.current;
+      const h = hoveredRef.current;
+
+      if (cachedLP.length === 0 || cachedRP.length === 0) {
+        measureNodes();
+      }
+
+      const LP = cachedLP;
+      const RP = cachedRP;
 
       const cx = width * 0.5;
       const cy = height * 0.5;
@@ -509,15 +530,17 @@ export default function SkillNetwork() {
           const alpha = h ? (isConnHovered ? 0.95 : 0.15) : p.a;
           const radius = isConnHovered ? p.r * 1.3 : p.r;
 
+          if (isConnHovered) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, radius + 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(227,106,106,0.25)';
+            ctx.fill();
+          }
+
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(227,106,106,${alpha})`;
-          if (isConnHovered) {
-            ctx.shadowColor = 'rgba(227,106,106,0.7)';
-            ctx.shadowBlur = 6;
-          }
           ctx.fill();
-          ctx.shadowBlur = 0;
         });
       }
 
@@ -554,16 +577,20 @@ export default function SkillNetwork() {
         ctx.fill();
       });
 
-      // Box shadow
-      ctx.save();
-      ctx.shadowColor   = 'rgba(133,14,53,0.16)';
-      ctx.shadowBlur    = isMobile ? 14 : 24;
-      ctx.shadowOffsetY = 4;
-      ctx.fillStyle     = '#FFF5E4';
+      // Subtle hardware-accelerated layered box shadow (zero blur passes)
+      ctx.fillStyle = 'rgba(133,14,53,0.05)';
+      ctx.beginPath();
+      ctx.roundRect(BX - 2, BY + 3, BW + 4, BH + 4, isMobile ? 12 : 16);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(133,14,53,0.08)';
+      ctx.beginPath();
+      ctx.roundRect(BX - 1, BY + 2, BW + 2, BH + 2, isMobile ? 11 : 15);
+      ctx.fill();
+
+      ctx.fillStyle = '#FFF5E4';
       ctx.beginPath();
       ctx.roundRect(BX, BY, BW, BH, isMobile ? 10 : 14);
       ctx.fill();
-      ctx.restore();
 
       // Box border
       ctx.beginPath();
@@ -607,12 +634,44 @@ export default function SkillNetwork() {
       animId = requestAnimationFrame(render);
     };
 
+    // IntersectionObserver to pause loop completely when offscreen
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        isVisible = entry ? entry.isIntersecting : true;
+        if (isVisible && !animId) {
+          lastTs = performance.now();
+          animId = requestAnimationFrame(render);
+        } else if (!isVisible && animId) {
+          cancelAnimationFrame(animId);
+          animId = null;
+        }
+      },
+      { threshold: 0.05 }
+    );
+    if (containerRef.current) io.observe(containerRef.current);
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (animId) {
+          cancelAnimationFrame(animId);
+          animId = null;
+        }
+      } else if (isVisible && !animId) {
+        lastTs = performance.now();
+        animId = requestAnimationFrame(render);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     animId = requestAnimationFrame(render);
     return () => {
-      cancelAnimationFrame(animId);
+      if (animId) cancelAnimationFrame(animId);
       ro.disconnect();
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [data]);
 
   // Compute active connection IDs for hover highlighting
   const connectedAcadIds = new Set();
@@ -636,21 +695,9 @@ export default function SkillNetwork() {
             <span className="w-1.5 h-1.5 rounded-full bg-[#E36A6A] animate-pulse" />
             Live Semantic Network
           </span>
-          <span className="hidden md:inline text-[#850E35]/60 font-mono text-[11px]">
-            SentenceTransformers · pgvector
-          </span>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 sm:gap-2.5 text-[10px] sm:text-[11px] font-medium text-[#850E35]">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-[#850E35] inline-block" /> Matched
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-[#E36A6A] inline-block" /> Skill Gap
-            </span>
-          </div>
-
           {/* Simulate / Reload Button */}
           <button
             type="button"
@@ -659,8 +706,7 @@ export default function SkillNetwork() {
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-semibold bg-[#850E35] text-[#FFFBF1] hover:bg-[#850E35]/90 active:scale-95 transition-all shadow-xs cursor-pointer disabled:opacity-60"
             title="Simulate different syllabus and industry market variations"
           >
-            <RotateCw className={`w-3 h-3 ${isReloading ? 'animate-spin' : ''}`} />
-            <span className="hidden xs:inline">Simulate</span>
+            Refresh <RotateCw className={`w-3 h-3 ${isReloading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -776,10 +822,6 @@ export default function SkillNetwork() {
           })}
         </div>
       </div>
-
-      <p className="text-center text-[10px] text-[#850E35]/40 mt-2">
-        Click <strong className="font-semibold text-[#850E35]/70">Simulate</strong> to test different curricula · Hover or tap any node to trace vector alignment
-      </p>
     </div>
   );
 }

@@ -74,7 +74,7 @@ const defaultItemAnimationVariants = {
   blurIn: {
     container: defaultContainerVariants,
     item: {
-      hidden: { opacity: 0, filter: 'blur(10px)' },
+      hidden: { opacity: 0, filter: 'blur(4px)' },
       show: {
         opacity: 1,
         filter: 'blur(0px)',
@@ -84,7 +84,7 @@ const defaultItemAnimationVariants = {
       },
       exit: {
         opacity: 0,
-        filter: 'blur(10px)',
+        filter: 'blur(4px)',
         transition: { duration: 0.3 },
       },
     },
@@ -92,7 +92,7 @@ const defaultItemAnimationVariants = {
   blurInUp: {
     container: defaultContainerVariants,
     item: {
-      hidden: { opacity: 0, filter: 'blur(10px)', y: 20 },
+      hidden: { opacity: 0, filter: 'blur(4px)', y: 20 },
       show: {
         opacity: 1,
         filter: 'blur(0px)',
@@ -105,7 +105,7 @@ const defaultItemAnimationVariants = {
       },
       exit: {
         opacity: 0,
-        filter: 'blur(10px)',
+        filter: 'blur(4px)',
         y: 20,
         transition: {
           y: { duration: 0.3 },
@@ -118,7 +118,7 @@ const defaultItemAnimationVariants = {
   blurInDown: {
     container: defaultContainerVariants,
     item: {
-      hidden: { opacity: 0, filter: 'blur(10px)', y: -20 },
+      hidden: { opacity: 0, filter: 'blur(4px)', y: -20 },
       show: {
         opacity: 1,
         filter: 'blur(0px)',
@@ -256,7 +256,7 @@ const TextAnimateBase = ({
   segmentClassName,
   as: Component = 'p',
   startOnView = true,
-  once = false,
+  once = true,
   by = 'word',
   animation = 'fadeIn',
   accessible = true,

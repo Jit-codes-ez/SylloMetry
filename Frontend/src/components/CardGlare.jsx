@@ -22,36 +22,19 @@ export function ShineBorder({
   const c3 = colors[2] || '#FFFBF1';
 
   return (
-    <>
-      {/* Outer blurred ambient glare aura */}
-      <div
-        style={{
-          '--duration': `${duration}s`,
-          background: `conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 45deg, ${c1} 100deg, ${c2} 140deg, ${c3} 165deg, ${c2} 190deg, ${c1} 220deg, transparent 270deg, transparent 360deg)`,
-          ...style,
-        }}
-        className={cn(
-          'animate-spin-glare pointer-events-none absolute -inset-[150%] blur-md opacity-80 will-change-transform',
-          className
-        )}
-        aria-hidden="true"
-        {...props}
-      />
-
-      {/* Crisp rotating glare border */}
-      <div
-        style={{
-          '--duration': `${duration}s`,
-          background: `conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 45deg, ${c1} 100deg, ${c2} 140deg, ${c3} 165deg, ${c2} 190deg, ${c1} 220deg, transparent 270deg, transparent 360deg)`,
-          ...style,
-        }}
-        className={cn(
-          'animate-spin-glare pointer-events-none absolute -inset-[150%] will-change-transform',
-          className
-        )}
-        aria-hidden="true"
-      />
-    </>
+    <div
+      style={{
+        '--duration': `${duration}s`,
+        background: `conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 45deg, ${c1} 100deg, ${c2} 140deg, ${c3} 165deg, ${c2} 190deg, ${c1} 220deg, transparent 270deg, transparent 360deg)`,
+        ...style,
+      }}
+      className={cn(
+        'animate-spin-glare pointer-events-none absolute -inset-[60%] will-change-transform',
+        className
+      )}
+      aria-hidden="true"
+      {...props}
+    />
   );
 }
 

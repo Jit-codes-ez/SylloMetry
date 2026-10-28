@@ -109,24 +109,6 @@ export default function FAQSupport() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header Badge & Title */}
         <div className="max-w-3xl mb-12">
-          {/* Badge container animated in first */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: 'easeOut' }}
-            className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFF5E4] text-[#850E35] border border-[#850E35]/20 mb-4 shadow-2xs"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-[#E36A6A]" />
-            <TextAnimate
-              as="span"
-              animation="fadeIn"
-              by="character"
-              delay={0.1}
-              duration={0.3}
-            >
-              Assistance & Guidance
-            </TextAnimate>
-          </motion.div>
 
           {/* Main heading */}
           <TextAnimate
@@ -259,7 +241,7 @@ export default function FAQSupport() {
                   background:
                     'conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 50deg, #850E35 110deg, #E36A6A 150deg, #FFF5E4 175deg, #E36A6A 200deg, #850E35 240deg, transparent 290deg, transparent 360deg)',
                 }}
-                className="animate-spin-glare pointer-events-none absolute -inset-[150%] opacity-80 will-change-transform"
+                className="animate-spin-glare pointer-events-none absolute -inset-[60%] opacity-80 will-change-transform"
                 aria-hidden="true"
               />
 

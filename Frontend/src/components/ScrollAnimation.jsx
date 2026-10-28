@@ -167,8 +167,12 @@ export default function Reveal({
 
     queryAndObserveAll();
 
+    let debounceTimer = null;
     const mutationObserver = new MutationObserver(() => {
-      queryAndObserveAll();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        queryAndObserveAll();
+      }, 150);
     });
     mutationObserver.observe(container, { childList: true, subtree: true });
 
@@ -177,36 +181,54 @@ export default function Reveal({
       typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches;
 
     let handleMove, handleLeave;
+    let tiltRaf = null;
+
     if (supportsFinePointer) {
       handleMove = (e) => {
-        const card = e.target.closest('.card-interactive');
-        if (!card || !container.contains(card)) return;
-        if (
-          card.hasAttribute('data-tilt-wrapper') ||
-          card.hasAttribute('data-tilt-card') ||
-          card.querySelector?.('[data-tilt-card]')
-        ) {
-          return;
-        }
-        const rect = card.getBoundingClientRect();
-        const px = (e.clientX - rect.left) / rect.width;
-        const py = (e.clientY - rect.top) / rect.height;
-        card.style.setProperty('--tilt-x', `${(py - 0.5) * -8}deg`);
-        card.style.setProperty('--tilt-y', `${(px - 0.5) * 8}deg`);
-        card.classList.add('is-tilting');
+        if (tiltRaf) return;
+        const target = e.target;
+        const clientX = e.clientX;
+        const clientY = e.clientY;
+
+        tiltRaf = requestAnimationFrame(() => {
+          tiltRaf = null;
+          const card = target.closest?.('.card-interactive');
+          if (!card || !container.contains(card)) return;
+          if (
+            card.hasAttribute('data-tilt-wrapper') ||
+            card.hasAttribute('data-tilt-card') ||
+            card.querySelector?.('[data-tilt-card]')
+          ) {
+            return;
+          }
+          const rect = card.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            const px = (clientX - rect.left) / rect.width;
+            const py = (clientY - rect.top) / rect.height;
+            card.style.setProperty('--tilt-x', `${(py - 0.5) * -8}deg`);
+            card.style.setProperty('--tilt-y', `${(px - 0.5) * 8}deg`);
+            card.classList.add('is-tilting');
+          }
+        });
       };
       handleLeave = (e) => {
+        if (tiltRaf) {
+          cancelAnimationFrame(tiltRaf);
+          tiltRaf = null;
+        }
         const card = e.target.closest?.('.card-interactive');
         if (!card) return;
         card.classList.remove('is-tilting');
         card.style.removeProperty('--tilt-x');
         card.style.removeProperty('--tilt-y');
       };
-      container.addEventListener('pointermove', handleMove);
+      container.addEventListener('pointermove', handleMove, { passive: true });
       container.addEventListener('pointerleave', handleLeave, true);
     }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (tiltRaf) cancelAnimationFrame(tiltRaf);
       observer.disconnect();
       mutationObserver.disconnect();
       if (supportsFinePointer) {

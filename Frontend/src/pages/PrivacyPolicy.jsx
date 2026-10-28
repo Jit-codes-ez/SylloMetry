@@ -87,25 +87,7 @@ export default function PrivacyPolicy() {
         {/* Header Badge & Title */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10">
           <div>
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-              className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFF5E4] text-[#850E35] border border-[#850E35]/20 mb-3 shadow-2xs"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#E36A6A]" />
-              <TextAnimate
-                as="span"
-                animation="fadeIn"
-                by="character"
-                delay={0.1}
-                duration={0.3}
-              >
-                Institutional Trust & Governance
-              </TextAnimate>
-            </motion.div>
-
+            
             {/* Title */}
             <TextAnimate
               as="h1"

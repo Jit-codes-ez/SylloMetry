@@ -45,9 +45,7 @@ export default function Hero() {
 
   return (
     <section id="home" className="relative min-h-screen flex flex-col justify-center pt-20 sm:pt-24 pb-12 sm:pb-16 overflow-hidden scroll-mt-20">
-      {/* Subtle Technical Background */}
-      <div className="absolute inset-0 bg-technical-dots opacity-40 pointer-events-none" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[720px] h-[220px] sm:h-[280px] lg:h-[360px] bg-gradient-to-tr from-[#E36A6A]/15 via-[#FFF5E4]/40 to-transparent blur-3xl pointer-events-none -z-10" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[720px] h-[220px] sm:h-[280px] lg:h-[360px] bg-[radial-gradient(ellipse_at_center,_rgba(227,106,106,0.18)_0%,_rgba(255,245,228,0.3)_45%,_transparent_70%)] pointer-events-none -z-10" />
 
       <div className="w-full max-w-7xl xl:max-w-[1360px] 2xl:max-w-[1420px] mx-auto px-3 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-8 xl:gap-10 items-center">

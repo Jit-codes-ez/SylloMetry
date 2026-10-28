@@ -96,24 +96,6 @@ export default function Documentation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header Badge & Title */}
           <div className="max-w-3xl mb-12">
-            {/* Badge container animated in first */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-              className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFF5E4] text-[#850E35] border border-[#850E35]/20 mb-4 shadow-2xs"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-[#E36A6A]" />
-              <TextAnimate
-                as="span"
-                animation="fadeIn"
-                by="character"
-                delay={0.1}
-                duration={0.3}
-              >
-                Platform Documentation
-              </TextAnimate>
-            </motion.div>
 
             {/* Main heading */}
             <TextAnimate

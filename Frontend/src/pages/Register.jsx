@@ -160,21 +160,6 @@ export default function Register() {
           ====================================================== */}
           <div className="hidden lg:block" data-reveal>
 
-            {/* Eyebrow badge */}
-            <div className="mb-5 flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#E36A6A]" />
-
-              <TextAnimation
-                as="span"
-                animation="fadeIn"
-                by="character"
-                duration={0.4}
-                className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#850E35]/45"
-              >
-                Why Join SylloMetry • Member Advantages
-              </TextAnimation>
-            </div>
-
             {/* Main heading */}
             <div className="max-w-xl text-5xl font-bold leading-[1.05] tracking-tight xl:text-6xl text-[#850E35]">
               <TextAnimation
@@ -278,15 +263,11 @@ export default function Register() {
                 {/* CARD HEADER */}
                 <div className="mb-7">
 
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#850E35] text-white">
-                    <Sparkles size={18} />
-                  </div>
-
-                  <h2 className="text-2xl font-bold tracking-tight">
+                  <h2 className="text-2xl font-bold tracking-tight text-center">
                     Create your account
                   </h2>
 
-                  <p className="mt-2 text-xs leading-5 text-[#850E35]/50">
+                  <p className="mt-2 text-xs leading-5 text-[#850E35]/50 text-center">
                     Start your personalized SylloMetry journey.
                   </p>
 
@@ -576,12 +557,6 @@ export default function Register() {
 
                 </div>
 
-              </div>
-
-              {/* SECURITY MESSAGE */}
-              <div className="mt-4 flex items-center justify-center gap-2 text-[9px] font-medium uppercase tracking-wider text-[#850E35]/35">
-                <ShieldCheck size={12} />
-                Your account information is protected
               </div>
             </CardGlare>
             </div>

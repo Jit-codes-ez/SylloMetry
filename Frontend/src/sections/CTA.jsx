@@ -38,16 +38,9 @@ export default function CTA() {
 
   return (
     <section id="cta" className="py-16 sm:py-24 bg-gradient-to-b from-[#520720] via-[#850E35] to-[#400418] text-[#FFFBF1] relative overflow-hidden">
-      {/* Subtle Technical Grid Overlay */}
-      <div className="absolute inset-0 bg-technical-grid opacity-10 pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[600px] h-[260px] sm:h-[300px] bg-[#E36A6A]/20 blur-3xl pointer-events-none rounded-full" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[600px] h-[260px] sm:h-[300px] bg-[radial-gradient(ellipse_at_center,_rgba(227,106,106,0.22)_0%,_transparent_70%)] pointer-events-none rounded-full" />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-        {/* Continuous Curriculum Intelligence Badge */}
-        <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-[#FFF5E4]/15 text-[#FFF5E4] border border-[#FFF5E4]/25 mb-4 sm:mb-6 shadow-2xs backdrop-blur-xs max-w-full">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#E36A6A] shrink-0" />
-          <span className="truncate">Continuous Curriculum Intelligence</span>
-        </div>
 
         {/* Heading: Responsive 2-line cadence with word-level animation */}
         <h2

@@ -22,8 +22,8 @@ export function Tilt({
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
-  const xSpring = useSpring(x, springOptions);
-  const ySpring = useSpring(y, springOptions);
+  const xSpring = useSpring(x, springOptions || { stiffness: 220, damping: 25 });
+  const ySpring = useSpring(y, springOptions || { stiffness: 220, damping: 25 });
 
   const rotateX = useTransform(
     ySpring,
@@ -42,17 +42,36 @@ export function Tilt({
 
   const transform = useMotionTemplate`perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
 
+  const rafRef = React.useRef(null);
+
   const handleMouseMove = (e) => {
     if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    x.set((e.clientX - rect.left) / rect.width - 0.5);
-    y.set((e.clientY - rect.top) / rect.height - 0.5);
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      if (!ref.current) return;
+      const rect = ref.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        x.set((e.clientX - rect.left) / rect.width - 0.5);
+        y.set((e.clientY - rect.top) / rect.height - 0.5);
+      }
+    });
   };
 
   const handleMouseLeave = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     x.set(0);
     y.set(0);
   };
+
+  React.useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   return (
     <motion.div
@@ -75,43 +94,57 @@ export function Tilt({
 
 export function ClippedCircle({
   className,
-  circleClassName = 'bg-gradient-to-tr from-[#E36A6A]/20 via-[#FFF5E4]/30 to-transparent blur-xl',
+  circleClassName = 'bg-[radial-gradient(circle_at_center,_rgba(227,106,106,0.18)_0%,_rgba(255,245,228,0.25)_40%,_transparent_70%)]',
   circleSize = 600,
 }) {
   const containerRef = React.useRef(null);
-  const [isHovered, setIsHovered] = React.useState(false);
-  const [position, setPosition] = React.useState({ x: '50%', y: '50%' });
+  const circleRef = React.useRef(null);
 
   React.useEffect(() => {
     const container = containerRef.current;
-    if (!container || !container.parentElement) return;
+    const circle = circleRef.current;
+    if (!container || !container.parentElement || !circle) return;
 
     const parent = container.parentElement;
+    let rafId = null;
 
     const handleMouseEnter = (e) => {
       const rect = parent.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setPosition({ x: `${x}%`, y: `${y}%` });
-      setIsHovered(true);
+      circle.style.left = `${x}%`;
+      circle.style.top = `${y}%`;
+      circle.style.transform = 'translate(-50%, -50%) scale(1)';
+      circle.style.opacity = '1';
     };
 
     const handleMouseMove = (e) => {
-      const rect = parent.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setPosition({ x: `${x}%`, y: `${y}%` });
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const rect = parent.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        circle.style.left = `${x}%`;
+        circle.style.top = `${y}%`;
+      });
     };
 
     const handleMouseLeave = () => {
-      setIsHovered(false);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      circle.style.transform = 'translate(-50%, -50%) scale(0)';
+      circle.style.opacity = '0';
     };
 
-    parent.addEventListener('mouseenter', handleMouseEnter);
-    parent.addEventListener('mousemove', handleMouseMove);
+    parent.addEventListener('mouseenter', handleMouseEnter, { passive: true });
+    parent.addEventListener('mousemove', handleMouseMove, { passive: true });
     parent.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       parent.removeEventListener('mouseenter', handleMouseEnter);
       parent.removeEventListener('mousemove', handleMouseMove);
       parent.removeEventListener('mouseleave', handleMouseLeave);
@@ -126,26 +159,19 @@ export function ClippedCircle({
         className
       )}
     >
-      <motion.div
+      <div
+        ref={circleRef}
         className={cn(
-          'pointer-events-none absolute rounded-full',
+          'pointer-events-none absolute rounded-full transition-transform duration-300 ease-out',
           circleClassName
         )}
         style={{
-          left: position.x,
-          top: position.y,
+          left: '50%',
+          top: '50%',
           width: circleSize,
           height: circleSize,
-        }}
-        initial={{ scale: 0, x: '-50%', y: '-50%' }}
-        animate={{
-          scale: isHovered ? 1 : 0,
-          x: '-50%',
-          y: '-50%',
-        }}
-        transition={{
-          duration: 0.45,
-          ease: [0.19, 1, 0.22, 1],
+          transform: 'translate(-50%, -50%) scale(0)',
+          opacity: 0,
         }}
       />
     </div>

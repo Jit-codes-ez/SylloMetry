@@ -1,3 +1,4 @@
+import { useAuth } from "@/context/AuthContext";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -645,6 +646,7 @@ function CareerSimulationLab() {
   );
 }
 export default function Dashboard({ isLoading = false }) {
+  const { user } = useAuth();
   const [uploadedCurriculum, setUploadedCurriculum] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
@@ -697,7 +699,7 @@ export default function Dashboard({ isLoading = false }) {
             <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight text-[#850E35] sm:text-4xl">
-                  Good evening, Saini.
+                  Good evening, {user?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "Scholar"}.
                 </h1>
 
                 <p className="mt-2 max-w-xl text-sm leading-6 text-[#850E35]/55">

@@ -21,6 +21,12 @@ import { GoogleButton } from "@/components/GoogleButton";
 import { ValidateOtp } from "@/components/ValidateOtp";
 import { Button1 } from "@/components/Button1";
 import { Button2 } from "@/components/Button2";
+import {
+  sendSignupOtp,
+  verifySignupOtp,
+  completeSignup,
+  getGoogleSignupUrl,
+} from "@/lib/auth";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -44,24 +50,40 @@ export default function Register() {
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [sessionToken, setSessionToken] = useState(null);
 
   const isEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
 
-  const handleSendVerificationOtp = () => {
+  const handleSendVerificationOtp = async () => {
     if (!isEmailFormatValid || isSendingOtp) return;
     setIsSendingOtp(true);
-    setTimeout(() => {
-      setIsSendingOtp(false);
+    setErrors((prev) => ({ ...prev, email: "", general: "" }));
+    try {
+      await sendSignupOtp(formData.email, formData.fullName.trim());
       setShowOtpInput(true);
-    }, 500);
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        email: err.message || "Failed to send verification code.",
+      }));
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
-  const handleGoogleAuth = () => {
+  const handleGoogleAuth = async () => {
     setIsGoogleSubmitting(true);
-    setTimeout(() => {
+    setErrors((prev) => ({ ...prev, general: "" }));
+    try {
+      const authUrl = await getGoogleSignupUrl();
+      window.location.href = authUrl;
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        general: err.message || "Failed to initiate Google sign up.",
+      }));
       setIsGoogleSubmitting(false);
-      navigate("/dashboard");
-    }, 1000);
+    }
   };
 
   const handleChange = (e) => {
@@ -115,10 +137,7 @@ export default function Register() {
       newErrors.confirmPassword = "Passwords do not match.";
     }
 
-    if (!formData.careerGoal) {
-      newErrors.careerGoal =
-        "Please select your career goal.";
-    }
+
 
     if (!formData.terms) {
       newErrors.terms =
@@ -128,7 +147,7 @@ export default function Register() {
     return newErrors;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const validationErrors = validateForm();
@@ -139,13 +158,30 @@ export default function Register() {
     }
 
     setIsSubmitting(true);
+    setErrors((prev) => ({ ...prev, general: "" }));
 
-    // Temporary dashboard navigation.
-    // Replace this later with your actual registration API.
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const res = await completeSignup({
+        fullName: formData.fullName.trim(),
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        termsAccepted: formData.terms,
+        accessToken: sessionToken,
+      });
+
+      if (res?.session?.access_token) {
+        localStorage.setItem("supabase_token", res.session.access_token);
+      }
       navigate("/dashboard");
-    }, 1000);
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        general: err.message || "Registration failed. Please try again.",
+      }));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -345,83 +381,24 @@ export default function Register() {
                           email={formData.email}
                           length={6}
                           onVerify={async (otpCode) => {
-                            // Verify OTP (simulated backend call)
-                            await new Promise((resolve) => setTimeout(resolve, 800));
-                            if (otpCode === "000000") {
-                              throw new Error("Invalid verification code. Please check your inbox.");
+                            const res = await verifySignupOtp(formData.email, otpCode);
+                            if (res?.session?.access_token) {
+                              setSessionToken(res.session.access_token);
                             }
                             setIsEmailVerified(true);
-                            setErrors((prev) => ({ ...prev, email: "" }));
+                            setErrors((prev) => ({ ...prev, email: "", general: "" }));
                             setTimeout(() => {
                               setShowOtpInput(false);
                             }, 1200);
                           }}
                           onResend={async () => {
-                            await new Promise((resolve) => setTimeout(resolve, 700));
+                            await sendSignupOtp(formData.email, formData.fullName.trim());
                           }}
                         />
                       </motion.div>
                     )}
                   </AnimatePresence>
-
-                  {/* CAREER GOAL */}
-                  <div>
-                    <label
-                      htmlFor="careerGoal"
-                      className="mb-1.5 block text-xs font-semibold"
-                    >
-                      Career Goal
-                    </label>
-
-                    <div className="relative">
-                      <BriefcaseBusiness
-                        size={16}
-                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#850E35]/35"
-                      />
-
-                      <select
-                        id="careerGoal"
-                        name="careerGoal"
-                        value={formData.careerGoal}
-                        onChange={handleChange}
-                        className={`w-full appearance-none rounded-xl border bg-[#FFFBF1] py-3 pl-10 pr-4 text-sm outline-none transition focus:bg-white focus:ring-2 focus:ring-[#E36A6A]/20 ${
-                          errors.careerGoal
-                            ? "border-red-400"
-                            : "border-[#850E35]/10 focus:border-[#850E35]/30"
-                        }`}
-                      >
-                        <option value="">
-                          Select your target role
-                        </option>
-                        <option value="full-stack-developer">
-                          Full Stack Developer
-                        </option>
-                        <option value="frontend-developer">
-                          Frontend Developer
-                        </option>
-                        <option value="backend-developer">
-                          Backend Developer
-                        </option>
-                        <option value="software-engineer">
-                          Software Engineer
-                        </option>
-                        <option value="data-scientist">
-                          Data Scientist
-                        </option>
-                        <option value="ai-ml-engineer">
-                          AI / ML Engineer
-                        </option>
-                        <option value="devops-engineer">
-                          DevOps Engineer
-                        </option>
-                      </select>
-                    </div>
-
-                    {errors.careerGoal && (
-                      <ErrorMessage text={errors.careerGoal} />
-                    )}
-                  </div>
-
+                  
                   {/* PASSWORD */}
                   <AnimatedInput
                     label="Password"
@@ -485,13 +462,13 @@ export default function Register() {
                         className="mt-1 h-4 w-4 accent-[#850E35]"
                       />
 
-                      <span className="text-[10px] leading-5 text-[#850E35]/55">
+                      <span className="text-xs text-[#850E35]/50 leading-5 text-[#850E35]/55">
                         I agree to the SylloMetry{" "}
-                        <Link to = "/terms" className="font-semibold text-[#850E35]">
+                        <Link to = "/terms" className="font-semibold text-[#850E35] hover:text-[#E36A6A]">
                           Terms of Service
                         </Link>{" "}
                         and{" "}
-                        <Link to = "/privacy" className="font-semibold text-[#850E35]">
+                        <Link to = "/privacy" className="font-semibold text-[#850E35] hover:text-[#E36A6A]">
                           Privacy Policy
                         </Link>
                         .
@@ -504,6 +481,13 @@ export default function Register() {
                     )}
 
                   </div>
+
+                  {/* GENERAL ERROR MESSAGE */}
+                  {errors.general && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center text-xs font-medium text-red-600">
+                      {errors.general}
+                    </div>
+                  )}
 
                   {/* SUBMIT BUTTON */}
                   <Button1

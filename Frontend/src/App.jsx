@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import Reveal from './components/ScrollAnimation';
 import { PageFallback } from './components/PageLoader';
 import { DashboardSkeleton } from './components/ClassicSkeleton';
+import { AuthProvider } from './context/AuthContext';
 
 // Code-split pages for production performance and network loading transitions
 const Home = lazy(() => import('./pages/Home'));
@@ -134,7 +135,9 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

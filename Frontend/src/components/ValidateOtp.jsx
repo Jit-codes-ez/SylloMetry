@@ -65,7 +65,9 @@ export function ValidateOtp({
   isSubmitting: externalSubmitting = false,
   errorMessage: externalError = '',
   className = '',
+  as,
 }) {
+  const isForm = as !== undefined ? as === 'form' : variant !== 'inline';
   const [otp, setOtp] = useState('');
   const [internalSubmitting, setInternalSubmitting] = useState(false);
   const [internalError, setInternalError] = useState('');
@@ -95,6 +97,7 @@ export function ValidateOtp({
   // Handle Form Submission
   const handleVerify = async (e) => {
     if (e?.preventDefault) e.preventDefault();
+    if (e?.stopPropagation) e.stopPropagation();
     if (otp.length < length || isSubmitting) return;
 
     setInternalError('');
@@ -176,7 +179,16 @@ export function ValidateOtp({
             <span className="text-[10px] text-emerald-600 font-semibold">Proceed with registration</span>
           </div>
         ) : (
-          <form onSubmit={handleVerify} className="space-y-3.5">
+          <div
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleVerify(e);
+              }
+            }}
+            className="space-y-3.5"
+          >
             {/* Perfectly Centered OTP Input Slots */}
             <div className="flex justify-center items-center w-full py-1.5">
               <OTPInput
@@ -247,7 +259,8 @@ export function ValidateOtp({
                   className="overflow-hidden"
                 >
                   <Button1
-                    type="submit"
+                    type="button"
+                    onClick={handleVerify}
                     disabled={isSubmitting}
                     className="w-full rounded-xl py-3 text-xs sm:text-sm font-semibold text-[#FFFBF1] shadow-md shadow-[#850E35]/20 hover:shadow-lg hover:shadow-[#850E35]/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -292,7 +305,7 @@ export function ValidateOtp({
                 </span>
               )}
             </div>
-          </form>
+          </div>
         )}
       </div>
     );
@@ -301,6 +314,8 @@ export function ValidateOtp({
   // ─────────────────────────────────────────────────────────────────────────────
   // CARD VARIANT (Default Standalone Modal / Card)
   // ─────────────────────────────────────────────────────────────────────────────
+  const CardFormContainer = isForm ? 'form' : 'div';
+
   return (
     <div className={cn('w-full max-w-md mx-auto p-6 sm:p-8 rounded-3xl border border-[#850E35]/12 bg-white shadow-xl shadow-[#850E35]/5', className)}>
       {/* Back button */}
@@ -350,7 +365,20 @@ export function ValidateOtp({
           </p>
         </div>
       ) : (
-        <form onSubmit={handleVerify} className="space-y-6">
+        <CardFormContainer
+          {...(isForm
+            ? { onSubmit: handleVerify }
+            : {
+                onKeyDown: (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleVerify(e);
+                  }
+                },
+              })}
+          className="space-y-6"
+        >
           {/* OTP Input Slots */}
           <div className="flex justify-center">
             <OTPInput
@@ -417,7 +445,8 @@ export function ValidateOtp({
 
           {/* Submit Button */}
           <Button1
-            type="submit"
+            type={isForm ? "submit" : "button"}
+            onClick={isForm ? undefined : handleVerify}
             disabled={otp.length < length || isSubmitting}
             className="w-full rounded-xl py-3.5 px-4 text-xs sm:text-sm font-semibold text-[#FFFBF1] shadow-md shadow-[#850E35]/20 hover:shadow-lg hover:shadow-[#850E35]/30 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
@@ -459,7 +488,7 @@ export function ValidateOtp({
               </span>
             )}
           </div>
-        </form>
+        </CardFormContainer>
       )}
     </div>
   );

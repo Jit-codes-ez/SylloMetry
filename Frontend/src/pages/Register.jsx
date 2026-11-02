@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   ArrowRight,
   Eye,
@@ -50,7 +50,33 @@ export default function Register() {
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isOtpSent, setIsOtpSent] = useState(false);
   const [sessionToken, setSessionToken] = useState(null);
+
+  // Account creation success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const successModalRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = successModalRef.current;
+    if (!dialog) return;
+
+    if (showSuccessModal) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else {
+      if (dialog.open) {
+        dialog.close();
+      }
+    }
+
+    return () => {
+      if (dialog?.open) {
+        dialog.close();
+      }
+    };
+  }, [showSuccessModal]);
 
   const isEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
 
@@ -61,7 +87,10 @@ export default function Register() {
     try {
       await sendSignupOtp(formData.email, formData.fullName.trim());
       setShowOtpInput(true);
+      setIsOtpSent(true);
     } catch (err) {
+      setShowOtpInput(false);
+      setIsOtpSent(false);
       setErrors((prev) => ({
         ...prev,
         email: err.message || "Failed to send verification code.",
@@ -92,6 +121,7 @@ export default function Register() {
     if (name === "email") {
       setIsEmailVerified(false);
       setShowOtpInput(false);
+      setIsOtpSent(false);
     }
 
     setFormData((prev) => ({
@@ -117,8 +147,12 @@ export default function Register() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Please enter a valid email.";
     } else if (!isEmailVerified) {
-      newErrors.email = "Please verify your email address to continue.";
-      setShowOtpInput(true);
+      newErrors.email = isOtpSent
+        ? "Please enter the verification code sent to your email."
+        : "Please verify your email address to continue.";
+      if (isOtpSent) {
+        setShowOtpInput(true);
+      }
     }
 
     if (!formData.password) {
@@ -136,8 +170,6 @@ export default function Register() {
     ) {
       newErrors.confirmPassword = "Passwords do not match.";
     }
-
-
 
     if (!formData.terms) {
       newErrors.terms =
@@ -173,7 +205,7 @@ export default function Register() {
       if (res?.session?.access_token) {
         localStorage.setItem("supabase_token", res.session.access_token);
       }
-      navigate("/dashboard");
+      setShowSuccessModal(true);
     } catch (err) {
       setErrors((prev) => ({
         ...prev,
@@ -340,11 +372,32 @@ export default function Register() {
                     icon={<Mail size={16} />}
                     error={errors.email}
                     autoComplete="email"
+                    inputClassName="pr-24"
                     endElement={
                       isEmailVerified ? (
-                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold select-none">
+                        <div
+                          role="status"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold select-none"
+                        >
                           <CheckCircle2 size={13} />
                           <span>Verified</span>
+                        </div>
+                      ) : isSendingOtp ? (
+                        <Button2
+                          type="button"
+                          disabled
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold transition shadow-xs opacity-80 cursor-wait"
+                        >
+                          <Loader2 size={12} className="animate-spin text-white" />
+                          <span>Sending...</span>
+                        </Button2>
+                      ) : isOtpSent ? (
+                        <div
+                          role="status"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FFF5E4] text-[#850E35] border border-[#850E35]/20 text-xs font-bold select-none"
+                        >
+                          <CheckCircle2 size={13} />
+                          <span>Sent</span>
                         </div>
                       ) : isEmailFormatValid ? (
                         <Button2
@@ -353,14 +406,7 @@ export default function Register() {
                           disabled={isSendingOtp}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold hover:bg-[#6e092c] transition shadow-xs disabled:opacity-60 cursor-pointer"
                         >
-                          {isSendingOtp ? (
-                            <>
-                              <Loader2 size={12} className="animate-spin text-white" />
-                              <span>Sending...</span>
-                            </>
-                          ) : (
-                            <span>Verify</span>
-                          )}
+                          <span>Verify</span>
                         </Button2>
                       ) : null
                     }
@@ -393,6 +439,7 @@ export default function Register() {
                           }}
                           onResend={async () => {
                             await sendSignupOtp(formData.email, formData.fullName.trim());
+                            setIsOtpSent(true);
                           }}
                         />
                       </motion.div>
@@ -547,13 +594,54 @@ export default function Register() {
           </div>
         </div>
       </div>
-    </div>
+
+    {/* =====================================================
+        ACCOUNT CREATION SUCCESS MODAL
+    ====================================================== */}
+    <dialog
+      ref={successModalRef}
+      aria-labelledby="success-modal-title"
+      aria-describedby="success-modal-desc"
+      onClose={() => setShowSuccessModal(false)}
+      className="fixed inset-0 m-auto max-w-md w-[92vw] rounded-3xl bg-transparent p-0 text-[#850E35] outline-none backdrop:bg-black/50 backdrop:backdrop-blur-xs overscroll-contain animate-in fade-in zoom-in-95 duration-200 z-50 border-0 shadow-none"
+    >
+      <div className="rounded-3xl border border-[#850E35]/15 bg-white p-6 sm:p-8 shadow-2xl text-center">
+        {/* Success Icon */}
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 shadow-xs">
+          <CheckCircle2 size={30} />
+        </div>
+
+        {/* Title */}
+        <h2 id="success-modal-title" className="text-2xl font-bold tracking-tight text-[#850E35]">
+          Account Creation Successful!
+        </h2>
+
+        {/* Description */}
+        <p id="success-modal-desc" className="mt-2 text-xs sm:text-sm text-[#850E35]/70 leading-relaxed">
+          Your SylloMetry account has been created successfully. Click below to proceed to the login page and sign in to your account.
+        </p>
+
+        {/* Button to Login Page using Button2 */}
+        <div className="mt-6 flex flex-col gap-2.5">
+          <Button2
+            href="/signin"
+            onClick={() => setShowSuccessModal(false)}
+            className="w-full py-3.5 rounded-xl font-bold text-sm bg-[#850E35] text-[#FFFBF1] hover:bg-[#6e092c] shadow-md shadow-[#850E35]/20 hover:shadow-lg transition-all"
+            autoFocus
+          >
+            <span>Go to Login</span>
+            <ArrowRight size={16} />
+          </Button2>
+        </div>
+      </div>
+    </dialog>
+  </div>
   );
 }
 
 
 /* ================================================================
-   FEATURE COMPONENT
+  FEATURE COMPONENT
 ================================================================ */
 
 function Feature({
@@ -587,7 +675,7 @@ function Feature({
 
 
 /* ================================================================
-   ERROR MESSAGE
+  ERROR MESSAGE
 ================================================================ */
 function ErrorMessage({ text }) {
   return (

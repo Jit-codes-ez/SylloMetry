@@ -43,15 +43,13 @@ class SignupService:
     def check_user_exists_in_database(self, email: str) -> bool:
         """
         Checks whether an active registered account already exists for the given email
-        in the database (public.users) or Supabase Auth.
-        Enforces: 'If email already exists in database, then show user already exists.
-        And this match should be before verifying the email OTP.'
+        strictly in the database (public.users / public.user).
+        Does NOT check auth.users.
         """
         normalized_email = email.strip().lower()
+        target_client = self.admin_client or self.client
 
-        # 1. First, check the public.users profile table
         try:
-            target_client = self.admin_client or self.client
             profile_response = (
                 target_client.table("users")
                 .select("id, email")
@@ -60,27 +58,24 @@ class SignupService:
                 .execute()
             )
             if profile_response.data and len(profile_response.data) > 0:
-                logger.info("Existing user found in public.users table.")
+                logger.info("Existing registered user found in public.users table for email: %s", normalized_email)
                 return True
         except Exception as e:
-            # If public.users is not yet configured or table does not exist, log debug
-            logger.debug("Database profile lookup error (table may not be configured yet): %s", str(e))
-
-        # 2. Check auth.users if admin client is available
-        if self.admin_client:
+            logger.error("Database lookup error in public.users: %s", str(e))
+            # Fallback attempt in case table is named 'user'
             try:
-                users_list = self.admin_client.auth.admin.list_users()
-                for user in users_list:
-                    if getattr(user, "email", "").lower() == normalized_email:
-                        # If the user already confirmed email or has metadata/password
-                        if getattr(user, "email_confirmed_at", None) or getattr(user, "identities", None):
-                            # Check if user already has an established account
-                            metadata = getattr(user, "user_metadata", {}) or {}
-                            if metadata.get("terms_accepted") or metadata.get("full_name"):
-                                logger.info("Existing confirmed user found in auth.users.")
-                                return True
-            except Exception as e:
-                logger.debug("Auth admin list_users lookup error: %s", str(e))
+                fallback_res = (
+                    target_client.table("user")
+                    .select("id, email")
+                    .ilike("email", normalized_email)
+                    .limit(1)
+                    .execute()
+                )
+                if fallback_res.data and len(fallback_res.data) > 0:
+                    logger.info("Existing registered user found in public.user table for email: %s", normalized_email)
+                    return True
+            except Exception:
+                pass
 
         return False
 
@@ -116,6 +111,18 @@ class SignupService:
                 "email": normalized_email,
                 "options": otp_options,
             })
+
+            # CRITICAL: Prevent premature upload into public.users before authentication!
+            # When sign_in_with_otp is called, if Supabase has a database trigger on auth.users
+            # that inserted a row into public.users, clean it up immediately.
+            # User data must ONLY go into public.users after OTP verification AND clicking Sign Up!
+            if self.admin_client:
+                try:
+                    self.admin_client.table("users").delete().ilike("email", normalized_email).execute()
+                    logger.info("Ensured public.users has no record while verification email is sent: %s", normalized_email)
+                except Exception as e:
+                    logger.debug("Cleanup error: %s", str(e))
+
             return SendOtpResponse(
                 success=True,
                 message="A 6-digit verification code has been sent to your email address.",
@@ -218,6 +225,17 @@ class SignupService:
                     user=safe_u,
                 )
 
+            # Ensure public.users has NO record after OTP verification.
+            # If a database trigger on auth.users (like on_auth_user_updated) prematurely
+            # inserted a row, clean it up immediately.
+            # Data must ONLY be inserted into public.users when the user submits the form!
+            if self.admin_client:
+                try:
+                    self.admin_client.table("users").delete().ilike("email", normalized_email).execute()
+                    logger.info("Ensured public.users has no record after OTP verification: %s", normalized_email)
+                except Exception as e:
+                    logger.debug("Cleanup error in verify_signup_otp: %s", str(e))
+
             return VerifyOtpResponse(
                 success=True,
                 message="Email verified successfully.",
@@ -270,6 +288,14 @@ class SignupService:
             )
 
         normalized_email = payload.email.strip().lower()
+
+        # Reject if user is already registered in public.users
+        if self.check_user_exists_in_database(normalized_email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User already exists with this email address. Please sign in instead.",
+            )
+
         now_iso = datetime.now(timezone.utc).isoformat()
         metadata_to_set = {
             "full_name": payload.full_name,
@@ -325,14 +351,6 @@ class SignupService:
                         detail="Email confirmation pending. Please verify your email OTP before completing signup.",
                     )
 
-                # Check if this user was already registered in the past with terms accepted / full account
-                existing_meta = getattr(matched_user, "user_metadata", {}) or {}
-                if existing_meta.get("terms_accepted") and existing_meta.get("full_name"):
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="User already exists with this email address. Please sign in instead.",
-                    )
-
                 target_user_id = str(matched_user.id)
             except HTTPException:
                 raise
@@ -386,17 +404,19 @@ class SignupService:
                     detail="Failed to complete user registration.",
                 )
 
-        # 4. Sync profile into public.users if profile table exists (safety sync alongside database trigger)
+        # 4. Insert user data into public.users now that the user has verified OTP and submitted the sign up form
         try:
             target_client = self.admin_client or self.client
             target_client.table("users").upsert({
                 "id": target_user_id,
                 "email": normalized_email,
                 "full_name": payload.full_name.strip(),
+                "password": payload.password,
                 "registration_by": "Email",
             }).execute()
+            logger.info("User successfully uploaded to public.users on sign up completion: %s", normalized_email)
         except Exception as e:
-            logger.debug("public.users sync skipped or handled by database trigger: %s", str(e))
+            logger.error("Failed to insert into public.users in complete_signup: %s", str(e))
 
         # 5. Sign in to obtain an authenticated session for the client
         session_data = None

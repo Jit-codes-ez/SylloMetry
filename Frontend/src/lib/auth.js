@@ -102,17 +102,65 @@ export async function signUpWithSupabase(supabaseClient, { email, password, full
 }
 
 /**
- * 4. Initiate Google OAuth signup.
- * GET /api/auth/signup/google
+ * 4. Check if an email already exists in public.users.
+ * GET /api/auth/check-email
  */
-export async function getGoogleSignupUrl() {
-  const response = await fetch(`${API_BASE}/api/auth/signup/google`);
+export async function checkEmailExists(email) {
+  if (!email || !email.trim()) return false;
+  const response = await fetch(`${API_BASE}/api/auth/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to verify email availability.';
+    throw new Error(errorMsg);
+  }
+  return Boolean(data.exists);
+}
+
+/**
+ * 5. Initiate Google OAuth signup.
+ * GET /api/auth/signup/google
+ * Optionally passes email parameter to check existence beforehand.
+ */
+export async function getGoogleSignupUrl(email) {
+  const queryParams = new URLSearchParams();
+  if (email && email.trim()) {
+    queryParams.append('email', email.trim());
+  }
+  const url = `${API_BASE}/api/auth/signup/google${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+  const response = await fetch(url);
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok || !data.authorization_url) {
-    throw new Error(data.detail || 'Failed to initiate Google signup.');
+    const errorMsg = data.detail || 'Failed to initiate Google signup.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
   }
 
   return data.authorization_url;
 }
+
+/**
+ * 6. Synchronize Google OAuth user to database.
+ * POST /api/auth/oauth/sync
+ */
+export async function syncOAuthUser(accessToken, mode = 'signup') {
+  const response = await fetch(`${API_BASE}/api/auth/oauth/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: accessToken, mode }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to sync Google user account.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
 

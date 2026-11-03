@@ -26,6 +26,7 @@ import {
   verifySignupOtp,
   completeSignup,
   getGoogleSignupUrl,
+  checkEmailExists,
 } from "@/lib/auth";
 
 export default function Register() {
@@ -102,15 +103,40 @@ export default function Register() {
 
   const handleGoogleAuth = async () => {
     setIsGoogleSubmitting(true);
-    setErrors((prev) => ({ ...prev, general: "" }));
+    setErrors((prev) => ({ ...prev, general: "", email: "" }));
     try {
-      const authUrl = await getGoogleSignupUrl();
+      sessionStorage.setItem("oauth_mode", "signup");
+
+      // Before authenticating Google account, check if email exists in public.users
+      const emailInput = formData.email?.trim();
+      if (emailInput) {
+        const exists = await checkEmailExists(emailInput);
+        if (exists) {
+          setErrors((prev) => ({
+            ...prev,
+            email: "User already exists with this email address. Please sign in instead.",
+            general: "An account with this email already exists in SylloMetry. Please sign in instead.",
+          }));
+          setIsGoogleSubmitting(false);
+          return;
+        }
+      }
+
+      const authUrl = await getGoogleSignupUrl(emailInput || undefined);
       window.location.href = authUrl;
     } catch (err) {
-      setErrors((prev) => ({
-        ...prev,
-        general: err.message || "Failed to initiate Google sign up.",
-      }));
+      if (err.status === 409 || err.message?.includes("already exists")) {
+        setErrors((prev) => ({
+          ...prev,
+          email: "User already exists with this email address. Please sign in instead.",
+          general: "An account with this email already exists in SylloMetry. Please sign in instead.",
+        }));
+      } else {
+        setErrors((prev) => ({
+          ...prev,
+          general: err.message || "Failed to initiate Google sign up.",
+        }));
+      }
       setIsGoogleSubmitting(false);
     }
   };
@@ -569,6 +595,12 @@ export default function Register() {
                   disabled={isSubmitting}
                   onClick={handleGoogleAuth}
                 />
+
+                {errors.general && (
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-center text-xs font-medium text-red-600">
+                    {errors.general}
+                  </div>
+                )}
 
                 {/* LOGIN */}
                 <div className="mt-6 border-t border-[#850E35]/10 pt-5 text-center">

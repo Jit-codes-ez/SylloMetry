@@ -1,6 +1,6 @@
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.schemas.signup import (
@@ -11,6 +11,8 @@ from app.schemas.signup import (
     SignupRequest,
     SignupResponse,
     GoogleAuthResponse,
+    OAuthSyncRequest,
+    OAuthSyncResponse,
 )
 from app.services.signup_service import SignupService
 
@@ -118,10 +120,14 @@ def complete_signup(
     summary="Initiate Google OAuth Signup",
     description=(
         "Generates Supabase Google OAuth authorization URL. "
-        "Preserves PKCE, redirects to FRONTEND_URL callback, and never handles Google secrets directly."
+        "Optionally checks if email already exists in public.users before initiating."
     ),
 )
 def initiate_google_signup(
+    email: Optional[str] = Query(
+        None,
+        description="Optional email to pre-check if user already exists before OAuth redirect",
+    ),
     redirect_to: Optional[str] = Query(
         None,
         description="Optional custom frontend callback URL overriding FRONTEND_URL/auth/callback",
@@ -134,8 +140,15 @@ def initiate_google_signup(
 ):
     """
     Initiate Google OAuth signup/login flow.
-    - Returns JSON with authorization URL or redirects browser directly if redirect=true.
+    - If email is provided, checks public.users first and rejects with 409 if exists.
     """
+    if email and email.strip():
+        if service.check_user_exists_in_database(email.strip().lower()):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User already exists with this email address. Please sign in instead.",
+            )
+
     auth_response = service.initiate_google_signup(redirect_to=redirect_to)
     if redirect:
         return RedirectResponse(
@@ -143,4 +156,47 @@ def initiate_google_signup(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
     return auth_response
+
+
+# ==============================================================================
+# Endpoint: Check If Email Exists
+# GET /api/auth/check-email
+# ==============================================================================
+@router.get(
+    "/check-email",
+    status_code=status.HTTP_200_OK,
+    summary="Check If Email Exists in Database",
+    description="Checks whether an active registered account already exists for the email in public.users.",
+)
+def check_email_exists(
+    email: str = Query(..., description="Email address to check"),
+    service: SignupService = Depends(get_signup_service),
+):
+    exists = service.check_user_exists_in_database(email.strip().lower())
+    return {"exists": exists, "email": email.strip().lower()}
+
+
+# ==============================================================================
+# Endpoint 5: Sync OAuth User Profile
+# POST /api/auth/oauth/sync
+# ==============================================================================
+@router.post(
+    "/oauth/sync",
+    response_model=OAuthSyncResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Synchronize Google OAuth User to Database",
+    description="Takes verified OAuth access token, verifies session, checks existence, and synchronizes profile into public.users.",
+)
+def sync_oauth_user(
+    payload: OAuthSyncRequest,
+    service: SignupService = Depends(get_signup_service),
+) -> OAuthSyncResponse:
+    """
+    Synchronizes an authenticated Google OAuth session into SylloMetry's public.users.
+    """
+    return service.sync_oauth_user(
+        access_token=payload.access_token,
+        mode=payload.mode or "signup",
+    )
+
 

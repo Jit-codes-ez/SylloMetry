@@ -14,6 +14,7 @@ from app.schemas.signup import (
     SignupRequest,
     SignupResponse,
     GoogleAuthResponse,
+    OAuthSyncResponse,
     SafeUser,
     SessionData,
 )
@@ -502,3 +503,152 @@ class SignupService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to initiate Google OAuth signup. Please check provider configuration.",
             )
+
+    def sync_oauth_user(self, access_token: str, mode: str = "signup") -> OAuthSyncResponse:
+        """
+        Synchronizes an authenticated Google OAuth user to public.users.
+        Accurately handles Supabase database triggers on auth.users:
+        - When a brand new user authenticates via Google, Supabase Auth creates the auth user
+          and its trigger auto-inserts a preliminary row into public.users with registration_by='Email'.
+        - For 'signup':
+          - If the user was already registered previously (account created > 5 minutes ago,
+            or registration_by is already 'Google', or provider is 'email'), we reject with 409.
+          - If the user is a fresh signup from this current Google OAuth session, we update
+            public.users setting registration_by='Google' and full_name, and return success.
+        - For 'signin':
+          - If no user exists or if it's an unconfirmed/new user attempting signin without having
+            signed up, we handle accordingly.
+        """
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+
+        try:
+            user_response = self.client.auth.get_user(access_token)
+            user = getattr(user_response, "user", None) or user_response
+            if not user or not getattr(user, "email", None):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or expired OAuth access token.",
+                )
+
+            email = str(user.email).strip().lower()
+            target_user_id = str(user.id)
+
+            # Determine age of this Supabase auth user
+            created_at_val = getattr(user, "created_at", None)
+            created_at_dt = None
+            if created_at_val:
+                if isinstance(created_at_val, str):
+                    try:
+                        created_at_dt = datetime.fromisoformat(created_at_val.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+                elif isinstance(created_at_val, datetime):
+                    created_at_dt = created_at_val if created_at_val.tzinfo else created_at_val.replace(tzinfo=timezone.utc)
+
+            # A user is fresh in auth.users if created within the last 5 minutes (300 seconds)
+            is_fresh_auth_user = False
+            if created_at_dt:
+                age_seconds = (now - created_at_dt).total_seconds()
+                if 0 <= age_seconds <= 300:
+                    is_fresh_auth_user = True
+
+            app_meta = getattr(user, "app_metadata", {}) or {}
+            provider = app_meta.get("provider")
+            providers = app_meta.get("providers", [])
+
+            target_client = self.admin_client or self.client
+
+            # Fetch existing row(s) from public.users for this email
+            db_records = []
+            try:
+                res = (
+                    target_client.table("users")
+                    .select("*")
+                    .ilike("email", email)
+                    .execute()
+                )
+                db_records = res.data or []
+            except Exception as e:
+                logger.warning("Error fetching from public.users: %s", str(e))
+
+            user_row = db_records[0] if db_records else None
+
+            # Determine whether this is a pre-existing SylloMetry account or a brand new Google signup:
+            # 1. If no row in public.users: it's a new signup.
+            # 2. If a row exists in public.users:
+            #    Is it the row that the Supabase trigger just auto-inserted for this new Google user?
+            #    - The row's id matches target_user_id
+            #    - The auth user is fresh (created within 300s)
+            #    - The row's registration_by is NOT yet finalized to "Google"
+            #    - Provider was google (not a legacy email provider account)
+            # Check if this row in public.users was auto-inserted by the Supabase trigger
+            # during this current Google OAuth signup flow:
+            is_trigger_created_fresh_row = False
+            if user_row and is_fresh_auth_user:
+                if str(user_row.get("id")) == target_user_id:
+                    is_trigger_created_fresh_row = True
+
+            # If user already existed prior to this session:
+            user_already_existed = bool(user_row and not is_trigger_created_fresh_row)
+
+            if mode == "signup":
+                if user_already_existed:
+                    logger.info("OAuth signup rejected: user already exists for %s", email)
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="An account with this email already exists in SylloMetry. Please sign in instead.",
+                    )
+
+            if mode == "signin":
+                if not user_row or is_trigger_created_fresh_row:
+                    logger.info("OAuth signin rejected: no pre-existing user found for %s", email)
+                    # If trigger created a row for this uninvited signin, clean it up
+                    if is_trigger_created_fresh_row:
+                        try:
+                            target_client.table("users").delete().eq("id", target_user_id).execute()
+                        except Exception:
+                            pass
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="No SylloMetry account found with this email address. Please sign up first.",
+                    )
+
+            # Retrieve Google profile full name
+            user_meta = getattr(user, "user_metadata", {}) or {}
+            full_name = (
+                user_meta.get("full_name")
+                or user_meta.get("name")
+                or (user_row.get("full_name") if user_row and user_row.get("full_name") else None)
+                or email.split("@")[0].title()
+            )
+
+            # Persist finalized profile to public.users with registration_by = 'Google'
+            target_client.table("users").upsert({
+                "id": target_user_id,
+                "email": email,
+                "full_name": full_name,
+                "registration_by": "Google",
+            }).execute()
+
+            logger.info("Google OAuth user synchronized successfully with registration_by='Google': %s", email)
+
+            safe_user = SafeUser(
+                id=target_user_id,
+                email=email,
+                full_name=full_name,
+                registration_by="Google",
+                created_at=now_iso,
+                email_confirmed=True,
+            )
+            return OAuthSyncResponse(success=True, user=safe_user)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Failed to synchronize OAuth user: %s", str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to synchronize OAuth account: {str(e)}",
+            )
+

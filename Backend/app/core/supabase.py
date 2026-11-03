@@ -30,6 +30,8 @@ def get_supabase_client() -> Client:
             supabase_url=settings.SUPABASE_URL,
             supabase_key=settings.publishable_key,
         )
+        if hasattr(_supabase_client, "auth"):
+            _supabase_client.auth._flow_type = "implicit"
         return _supabase_client
     except Exception as e:
         logger.error("Failed to initialize Supabase client: %s", str(e))

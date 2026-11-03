@@ -185,3 +185,16 @@ class GoogleAuthResponse(BaseModel):
     authorization_url: str = Field(..., description="Supabase OAuth authorization URL for Google")
     provider: str = Field("google", description="OAuth identity provider")
     redirect_to: str = Field(..., description="Configured frontend callback URL")
+
+
+class OAuthSyncRequest(BaseModel):
+    """Payload to synchronize an authenticated OAuth session into the database."""
+    access_token: str = Field(..., description="Supabase access token from OAuth callback")
+    mode: Optional[str] = Field("signup", description="OAuth context: 'signup' or 'signin'")
+
+
+class OAuthSyncResponse(BaseModel):
+    """Response returned upon synchronizing OAuth session to public users table."""
+    success: bool = Field(True, description="Status indicator")
+    user: SafeUser = Field(..., description="Safe user profile details")
+

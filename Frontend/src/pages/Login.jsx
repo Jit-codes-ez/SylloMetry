@@ -22,6 +22,7 @@ import { GoogleButton } from "@/components/GoogleButton";
 import { ValidateOtp } from "@/components/ValidateOtp";
 import { Button1 } from "@/components/Button1";
 import { Button2 } from "@/components/Button2";
+import { getGoogleSignupUrl } from "@/lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -53,12 +54,20 @@ export default function Login() {
     }, 500);
   };
 
-  const handleGoogleAuth = () => {
+  const handleGoogleAuth = async () => {
     setIsGoogleSubmitting(true);
-    setTimeout(() => {
+    setErrors((prev) => ({ ...prev, general: "" }));
+    try {
+      sessionStorage.setItem("oauth_mode", "signin");
+      const authUrl = await getGoogleSignupUrl();
+      window.location.href = authUrl;
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        general: err.message || "Failed to initiate Google sign in.",
+      }));
       setIsGoogleSubmitting(false);
-      navigate("/dashboard");
-    }, 1000);
+    }
   };
 
   const handleChange = (e) => {

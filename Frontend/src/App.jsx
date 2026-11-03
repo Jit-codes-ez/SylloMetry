@@ -16,6 +16,7 @@ const Documentation = lazy(() => import('./pages/Documentation'));
 const FAQSupport = lazy(() => import('./pages/FAQSupport'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function ScrollToTop() {
@@ -59,6 +60,14 @@ function AppContent() {
               element={
                 <Suspense fallback={<PageFallback message="Loading Sign In..." />}>
                   <SignIn />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/auth/callback"
+              element={
+                <Suspense fallback={<PageFallback message="Verifying Google Sign In..." />}>
+                  <AuthCallback />
                 </Suspense>
               }
             />

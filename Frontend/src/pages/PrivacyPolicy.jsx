@@ -157,18 +157,6 @@ export default function PrivacyPolicy() {
               </div>
             ))}
           </div>
-
-          <div className="pt-8 border-t border-[#850E35]/15 bg-[#FFF5E4]/50 -mx-6 sm:-mx-10 -mb-6 sm:-mb-10 p-6 sm:p-8 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-[#850E35]/75 text-center sm:text-left">
-              Questions regarding our research data governance protocol?
-            </div>
-            <Button1
-              href="mailto:research.privacy@syllometry.edu"
-              className="px-6 py-4 rounded-xl text-xs font-semibold bg-[#850E35] text-[#FFFBF1] hover:bg-[#6F0A2B] transition-all shadow-xs"
-            >
-              Contact Data Protection
-            </Button1>
-          </div>
         </div>
       </div>
     </div>

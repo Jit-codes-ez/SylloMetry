@@ -83,3 +83,73 @@ class CurrentUserResponse(BaseModel):
     success: bool = Field(True, description="Indicates request success")
     user: SafeUser = Field(..., description="Sanitized authenticated user profile")
 
+
+# ==============================================================================
+# Password Reset Schemas
+# ==============================================================================
+
+class PasswordResetOtpRequest(BaseModel):
+    """Payload to request password reset OTP."""
+    email: EmailStr = Field(..., description="Target registered account email")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+
+class PasswordResetOtpResponse(BaseModel):
+    """Response returned after sending password reset OTP."""
+    success: bool = Field(True, description="Indicates OTP was dispatched")
+    message: str = Field(..., description="Status message")
+    email: str = Field(..., description="Target normalized email")
+
+
+class VerifyPasswordResetOtpRequest(BaseModel):
+    """Payload to verify password reset OTP code."""
+    email: EmailStr = Field(..., description="Target registered account email")
+    token: str = Field(..., min_length=6, max_length=10, description="Verification OTP code")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("token")
+    @classmethod
+    def normalize_token(cls, v: str) -> str:
+        return v.strip()
+
+
+class VerifyPasswordResetOtpResponse(BaseModel):
+    """Response returned after verifying password reset OTP code."""
+    success: bool = Field(True, description="Indicates OTP was verified")
+    message: str = Field("Verification code confirmed.", description="Status message")
+    email: str = Field(..., description="Target normalized email")
+    reset_token: str = Field(..., description="Signed single-use reset authorization token")
+
+
+class ConfirmPasswordResetRequest(BaseModel):
+    """Payload to finalize password reset with verified OTP or reset_token."""
+    email: EmailStr = Field(..., description="Target registered account email")
+    token: str = Field(..., min_length=6, description="Verification OTP code or signed reset token")
+    new_password: str = Field(..., min_length=8, description="New account password")
+    confirm_password: str = Field(..., min_length=8, description="Confirmation of new password")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("token")
+    @classmethod
+    def normalize_token(cls, v: str) -> str:
+        return v.strip()
+
+
+class ConfirmPasswordResetResponse(BaseModel):
+    """Response returned upon successfully changing the password."""
+    success: bool = Field(True, description="Indicates password change success")
+    message: str = Field("Password reset successfully. Please sign in with your new password.", description="Status message")
+
+

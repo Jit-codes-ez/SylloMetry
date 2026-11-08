@@ -294,4 +294,81 @@ export async function logoutUser() {
   }
 }
 
+/**
+ * 12. Send password reset OTP verification code.
+ * POST /api/auth/password/reset/otp/send
+ */
+export async function sendPasswordResetOtp(email) {
+  const response = await fetch(`${API_BASE}/api/auth/password/reset/otp/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to send verification code.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 13. Verify password reset OTP code and obtain reset authorization token.
+ * POST /api/auth/password/reset/otp/verify
+ */
+export async function verifyPasswordResetOtp(email, token) {
+  const response = await fetch(`${API_BASE}/api/auth/password/reset/otp/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      token: token.trim(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Invalid or expired verification code.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 14. Confirm password reset with reset authorization token or OTP.
+ * POST /api/auth/password/reset/confirm
+ */
+export async function confirmPasswordReset({ email, token, newPassword, confirmPassword }) {
+  const response = await fetch(`${API_BASE}/api/auth/password/reset/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      token: token.trim(),
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to reset password.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
 

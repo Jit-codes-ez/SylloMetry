@@ -316,17 +316,12 @@ export default function Login() {
                       />
 
                       <div className="mt-1.5 flex justify-end">
-                        <button
-                          type="button"
+                        <Link
+                          to="/forgot-password"
                           className="text-[10px] font-semibold text-[#850E35]/55 transition hover:text-[#E36A6A]"
-                          onClick={() =>
-                            alert(
-                              "Password reset will be available once the authentication API is connected."
-                            )
-                          }
                         >
                           Forgot password?
-                        </button>
+                        </Link>
                       </div>
                     </div>
 

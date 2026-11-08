@@ -11,6 +11,7 @@ import { AuthProvider } from './context/AuthContext';
 const Home = lazy(() => import('./pages/Home'));
 const SignUp = lazy(() => import('./pages/Register'));
 const SignIn = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Documentation = lazy(() => import('./pages/Documentation'));
 const FAQSupport = lazy(() => import('./pages/FAQSupport'));
@@ -60,6 +61,14 @@ function AppContent() {
               element={
                 <Suspense fallback={<PageFallback message="Loading Sign In..." />}>
                   <SignIn />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/forgot-password"
+              element={
+                <Suspense fallback={<PageFallback message="Loading Reset Password..." />}>
+                  <ForgotPassword />
                 </Suspense>
               }
             />

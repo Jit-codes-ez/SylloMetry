@@ -4,13 +4,19 @@ from fastapi import APIRouter, Depends, Header, status
 
 from app.core.security import get_current_user
 from app.schemas.login import (
+    ConfirmPasswordResetRequest,
+    ConfirmPasswordResetResponse,
     CurrentUserResponse,
     LoginRequest,
     LoginResponse,
+    PasswordResetOtpRequest,
+    PasswordResetOtpResponse,
     SendLoginOtpRequest,
     SendLoginOtpResponse,
     VerifyLoginOtpRequest,
     VerifyLoginOtpResponse,
+    VerifyPasswordResetOtpRequest,
+    VerifyPasswordResetOtpResponse,
 )
 from app.schemas.signup import SafeUser
 from app.services.login_service import LoginService
@@ -126,4 +132,58 @@ def logout_user(
     Logs out the user. Tokens are managed statelessly / client-side via Supabase JWT.
     """
     return {"success": True, "message": "Logged out successfully."}
+
+
+# ==============================================================================
+# Endpoint 6: Request Password Reset OTP
+# POST /api/auth/password/reset/otp/send
+# ==============================================================================
+@router.post(
+    "/password/reset/otp/send",
+    response_model=PasswordResetOtpResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Send Password Reset OTP Code",
+    description="Sends a 6-digit verification code to the registered email address for password recovery.",
+)
+def send_password_reset_otp(
+    payload: PasswordResetOtpRequest,
+    service: LoginService = Depends(get_login_service),
+) -> PasswordResetOtpResponse:
+    return service.send_password_reset_otp(payload)
+
+
+# ==============================================================================
+# Endpoint 7: Verify Password Reset OTP
+# POST /api/auth/password/reset/otp/verify
+# ==============================================================================
+@router.post(
+    "/password/reset/otp/verify",
+    response_model=VerifyPasswordResetOtpResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Password Reset OTP",
+    description="Verifies the recovery code and issues a signed reset authorization token.",
+)
+def verify_password_reset_otp(
+    payload: VerifyPasswordResetOtpRequest,
+    service: LoginService = Depends(get_login_service),
+) -> VerifyPasswordResetOtpResponse:
+    return service.verify_password_reset_otp(payload)
+
+
+# ==============================================================================
+# Endpoint 8: Confirm Password Reset
+# POST /api/auth/password/reset/confirm
+# ==============================================================================
+@router.post(
+    "/password/reset/confirm",
+    response_model=ConfirmPasswordResetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Confirm Password Reset",
+    description="Validates OTP and updates password in database and Supabase Auth.",
+)
+def confirm_password_reset(
+    payload: ConfirmPasswordResetRequest,
+    service: LoginService = Depends(get_login_service),
+) -> ConfirmPasswordResetResponse:
+    return service.confirm_password_reset(payload)
 

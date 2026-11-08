@@ -102,18 +102,26 @@ export async function signUpWithSupabase(supabaseClient, { email, password, full
 }
 
 /**
- * 4. Check if an email already exists in public.users.
+ * 4. Check if an email already exists in public.users and retrieve registration details.
  * GET /api/auth/check-email
  */
-export async function checkEmailExists(email) {
-  if (!email || !email.trim()) return false;
+export async function checkEmailDetails(email) {
+  if (!email || !email.trim()) return { exists: false, registration_by: null };
   const response = await fetch(`${API_BASE}/api/auth/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errorMsg = data.detail || data.message || 'Failed to verify email availability.';
     throw new Error(errorMsg);
   }
-  return Boolean(data.exists);
+  return {
+    exists: Boolean(data.exists),
+    registration_by: data.registration_by || null,
+  };
+}
+
+export async function checkEmailExists(email) {
+  const details = await checkEmailDetails(email);
+  return details.exists;
 }
 
 /**
@@ -161,6 +169,129 @@ export async function syncOAuthUser(accessToken, mode = 'signup') {
   }
 
   return data;
+}
+
+/**
+ * 7. Log in with email and password.
+ * POST /api/auth/login
+ */
+export async function loginWithPassword({ email, password, remember }) {
+  const response = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password,
+      remember: Boolean(remember),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Login failed. Please verify your credentials.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 8. Send login OTP verification code.
+ * POST /api/auth/login/otp/send
+ */
+export async function sendLoginOtp(email) {
+  const response = await fetch(`${API_BASE}/api/auth/login/otp/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to send verification code.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 9. Verify login OTP verification code.
+ * POST /api/auth/login/otp/verify
+ */
+export async function verifyLoginOtp(email, token) {
+  const response = await fetch(`${API_BASE}/api/auth/login/otp/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      token: token.trim(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Invalid or expired verification code.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 10. Fetch current user from Supabase JWT.
+ * GET /api/auth/me
+ */
+export async function getCurrentUser(token) {
+  const accessToken = token || localStorage.getItem('supabase_token');
+  if (!accessToken) return null;
+
+  const response = await fetch(`${API_BASE}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return data.user;
+}
+
+/**
+ * 11. Sign out the user.
+ * POST /api/auth/logout
+ */
+export async function logoutUser() {
+  const accessToken = localStorage.getItem('supabase_token');
+  try {
+    if (accessToken) {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+    }
+  } catch {
+    // Statelessly ignore errors on logout
+  } finally {
+    localStorage.removeItem('supabase_token');
+    localStorage.removeItem('supabase_refresh_token');
+    localStorage.removeItem('syllo_user');
+  }
 }
 
 

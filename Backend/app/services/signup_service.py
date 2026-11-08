@@ -80,6 +80,40 @@ class SignupService:
 
         return False
 
+    def get_user_profile_by_email(self, email: str) -> Optional[dict]:
+        """
+        Retrieves user record from public.users / public.user by email.
+        """
+        normalized_email = email.strip().lower()
+        target_client = self.admin_client or self.client
+
+        try:
+            profile_response = (
+                target_client.table("users")
+                .select("*")
+                .ilike("email", normalized_email)
+                .limit(1)
+                .execute()
+            )
+            if profile_response.data and len(profile_response.data) > 0:
+                return profile_response.data[0]
+        except Exception as e:
+            logger.error("Database lookup error in public.users: %s", str(e))
+            try:
+                fallback_res = (
+                    target_client.table("user")
+                    .select("*")
+                    .ilike("email", normalized_email)
+                    .limit(1)
+                    .execute()
+                )
+                if fallback_res.data and len(fallback_res.data) > 0:
+                    return fallback_res.data[0]
+            except Exception:
+                pass
+
+        return None
+
     def send_signup_otp(self, email: str, full_name: Optional[str] = None) -> SendOtpResponse:
         """
         Initiates the email OTP signup flow using Supabase Auth.
@@ -95,12 +129,25 @@ class SignupService:
 
         normalized_email = email.strip().lower()
 
-        # Pre-verification check: Reject if account already exists
-        if self.check_user_exists_in_database(normalized_email):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="User already exists with this email address. Please sign in instead.",
-            )
+        # Pre-verification check: Reject if account already exists with registered_by specific message
+        profile = self.get_user_profile_by_email(normalized_email)
+        if profile:
+            registration_by = (profile.get("registration_by") or "").strip().lower()
+            if registration_by == "email":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account was registered using Email. Please use 'Sign in' to continue.",
+                )
+            elif registration_by == "google":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account was registered using Google. Please use 'Sign in with Google' to continue.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account is already registered. Please sign in to continue.",
+                )
 
         try:
             logger.info("Requesting email OTP via Supabase Auth for new signup.")
@@ -595,10 +642,17 @@ class SignupService:
             if mode == "signup":
                 if user_already_existed:
                     logger.info("OAuth signup rejected: user already exists for %s", email)
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="An account with this email already exists in SylloMetry. Please sign in instead.",
-                    )
+                    reg_by = ((user_row.get("registration_by") if user_row else None) or "").strip().lower()
+                    if reg_by == "email":
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="This account was registered using Email. Please use 'Sign in' to continue.",
+                        )
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="This account was registered using Google. Please use 'Sign in with Google' to continue.",
+                        )
 
             if mode == "signin":
                 if not user_row or is_trigger_created_fresh_row:

@@ -27,6 +27,7 @@ import {
   completeSignup,
   getGoogleSignupUrl,
   checkEmailExists,
+  checkEmailDetails,
 } from "@/lib/auth";
 
 export default function Register() {
@@ -95,6 +96,7 @@ export default function Register() {
       setErrors((prev) => ({
         ...prev,
         email: err.message || "Failed to send verification code.",
+        general: "",
       }));
     } finally {
       setIsSendingOtp(false);
@@ -110,12 +112,15 @@ export default function Register() {
       // Before authenticating Google account, check if email exists in public.users
       const emailInput = formData.email?.trim();
       if (emailInput) {
-        const exists = await checkEmailExists(emailInput);
-        if (exists) {
+        const details = await checkEmailDetails(emailInput);
+        if (details.exists) {
+          const msg = details.registration_by === "Email"
+            ? "This account was registered using Email. Please use 'Sign in' to continue."
+            : "This account was registered using Google. Please use 'Sign in with Google' to continue.";
           setErrors((prev) => ({
             ...prev,
-            email: "User already exists with this email address. Please sign in instead.",
-            general: "An account with this email already exists in SylloMetry. Please sign in instead.",
+            email: msg,
+            general: "",
           }));
           setIsGoogleSubmitting(false);
           return;
@@ -125,18 +130,11 @@ export default function Register() {
       const authUrl = await getGoogleSignupUrl(emailInput || undefined);
       window.location.href = authUrl;
     } catch (err) {
-      if (err.status === 409 || err.message?.includes("already exists")) {
-        setErrors((prev) => ({
-          ...prev,
-          email: "User already exists with this email address. Please sign in instead.",
-          general: "An account with this email already exists in SylloMetry. Please sign in instead.",
-        }));
-      } else {
-        setErrors((prev) => ({
-          ...prev,
-          general: err.message || "Failed to initiate Google sign up.",
-        }));
-      }
+      setErrors((prev) => ({
+        ...prev,
+        email: err.message || "Failed to initiate Google sign up.",
+        general: "",
+      }));
       setIsGoogleSubmitting(false);
     }
   };
@@ -351,8 +349,8 @@ export default function Register() {
                 REGISTRATION CARD
             ====================================================== */}
             <div className="mx-auto w-full max-w-[520px]" data-reveal>
-              <CardGlare>
-              <div className="rounded-3xl border border-[#850E35]/10 bg-white p-6 shadow-[0_20px_60px_rgba(133,14,53,0.08)] sm:p-8">
+  
+              <CardGlare className="rounded-2xl border border-[#850E35]/10 bg-white p-6 shadow-[0_20px_60px_rgba(133,14,53,0.08)] sm:p-8">
 
                 {/* CARD HEADER */}
                 <div className="mb-7">
@@ -620,7 +618,6 @@ export default function Register() {
 
                 </div>
 
-              </div>
             </CardGlare>
             </div>
           </div>

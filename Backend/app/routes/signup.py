@@ -143,11 +143,24 @@ def initiate_google_signup(
     - If email is provided, checks public.users first and rejects with 409 if exists.
     """
     if email and email.strip():
-        if service.check_user_exists_in_database(email.strip().lower()):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="User already exists with this email address. Please sign in instead.",
-            )
+        profile = service.get_user_profile_by_email(email.strip().lower())
+        if profile:
+            reg_by = (profile.get("registration_by") or "").strip().lower()
+            if reg_by == "email":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account was registered using Email. Please use 'Sign in' to continue.",
+                )
+            elif reg_by == "google":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account was registered using Google. Please use 'Sign in with Google' to continue.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This account is already registered. Please sign in to continue.",
+                )
 
     auth_response = service.initiate_google_signup(redirect_to=redirect_to)
     if redirect:
@@ -172,8 +185,14 @@ def check_email_exists(
     email: str = Query(..., description="Email address to check"),
     service: SignupService = Depends(get_signup_service),
 ):
-    exists = service.check_user_exists_in_database(email.strip().lower())
-    return {"exists": exists, "email": email.strip().lower()}
+    profile = service.get_user_profile_by_email(email.strip().lower())
+    exists = profile is not None
+    registration_by = (profile.get("registration_by") if profile else None) or None
+    return {
+        "exists": exists,
+        "email": email.strip().lower(),
+        "registration_by": registration_by,
+    }
 
 
 # ==============================================================================

@@ -66,6 +66,7 @@ export function ValidateOtp({
   errorMessage: externalError = '',
   className = '',
   as,
+  successActionText = 'Proceed with registration',
 }) {
   const isForm = as !== undefined ? as === 'form' : variant !== 'inline';
   const [otp, setOtp] = useState('');
@@ -176,7 +177,7 @@ export function ValidateOtp({
               <CheckCircle2 size={16} className="shrink-0" />
               <span className="text-xs font-bold">Email verified successfully!</span>
             </div>
-            <span className="text-[10px] text-emerald-600 font-semibold">Proceed with registration</span>
+            <span className="text-[10px] text-emerald-600 font-semibold">{successActionText}</span>
           </div>
         ) : (
           <div

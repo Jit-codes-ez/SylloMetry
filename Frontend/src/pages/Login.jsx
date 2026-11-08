@@ -22,10 +22,17 @@ import { GoogleButton } from "@/components/GoogleButton";
 import { ValidateOtp } from "@/components/ValidateOtp";
 import { Button1 } from "@/components/Button1";
 import { Button2 } from "@/components/Button2";
-import { getGoogleSignupUrl } from "@/lib/auth";
+import { useAuth } from "@/context/AuthContext";
+import {
+  getGoogleSignupUrl,
+  loginWithPassword,
+  sendLoginOtp,
+  verifyLoginOtp,
+} from "@/lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -41,17 +48,30 @@ export default function Login() {
   // Email OTP verification states
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
+  const [isOtpSent, setIsOtpSent] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
 
   const isEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim());
 
-  const handleSendVerificationOtp = () => {
+  const handleSendVerificationOtp = async () => {
     if (!isEmailFormatValid || isSendingOtp) return;
     setIsSendingOtp(true);
-    setTimeout(() => {
-      setIsSendingOtp(false);
+    setErrors((prev) => ({ ...prev, email: "", general: "" }));
+    try {
+      await sendLoginOtp(formData.email);
       setShowOtpInput(true);
-    }, 500);
+      setIsOtpSent(true);
+    } catch (err) {
+      setShowOtpInput(false);
+      setIsOtpSent(false);
+      setErrors((prev) => ({
+        ...prev,
+        email: err.message || "Failed to send verification code.",
+        general: "",
+      }));
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
   const handleGoogleAuth = async () => {
@@ -76,6 +96,7 @@ export default function Login() {
     if (name === "email") {
       setIsEmailVerified(false);
       setShowOtpInput(false);
+      setIsOtpSent(false);
     }
 
     setFormData((prev) => ({
@@ -86,6 +107,7 @@ export default function Login() {
     setErrors((prev) => ({
       ...prev,
       [name]: "",
+      general: "",
     }));
   };
 
@@ -94,11 +116,15 @@ export default function Login() {
 
     if (!formData.email.trim()) {
       newErrors.email = "Please enter your email.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       newErrors.email = "Please enter a valid email.";
     } else if (!isEmailVerified) {
-      newErrors.email = "Please verify your email address to continue.";
-      setShowOtpInput(true);
+      newErrors.email = isOtpSent
+        ? "Please enter the verification code sent to your email."
+        : "Please verify your email address to continue.";
+      if (isOtpSent) {
+        setShowOtpInput(true);
+      }
     }
 
     if (!formData.password) {
@@ -108,8 +134,9 @@ export default function Login() {
     return newErrors;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrors((prev) => ({ ...prev, general: "" }));
 
     const validationErrors = validateForm();
 
@@ -120,12 +147,31 @@ export default function Login() {
 
     setIsSubmitting(true);
 
-    // Temporary login action.
-    // Replace this later with your actual authentication API.
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const res = await loginWithPassword({
+        email: formData.email,
+        password: formData.password,
+        remember: formData.remember,
+      });
+
+      if (res?.session?.access_token) {
+        login(res.session.access_token, res.user);
+        if (res.session.refresh_token) {
+          localStorage.setItem("supabase_refresh_token", res.session.refresh_token);
+        }
+      }
+
       navigate("/dashboard");
-    }, 1000);
+    } catch (err) {
+      const msg = err.message || "Failed to sign in. Please verify your credentials.";
+      setErrors((prev) => ({
+        ...prev,
+        general: msg,
+        password: msg.toLowerCase().includes("password") ? msg : prev.password,
+      }));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -136,8 +182,8 @@ export default function Login() {
 
             {/* LOGIN CARD (LEFT) */}
             <div className="mx-auto w-full max-w-[520px]" data-reveal>
-              <CardGlare>
-                <div className="rounded-3xl border border-[#850E35]/10 bg-white p-6 shadow-[0_20px_60px_rgba(133,14,53,0.08)] sm:p-8">
+
+                <CardGlare className="rounded-2xl border border-[#850E35]/10 bg-white p-6 shadow-[0_20px_60px_rgba(133,14,53,0.08)] sm:p-8">
 
                   {/* CARD HEADER */}
                   <div className="mb-7">
@@ -156,42 +202,55 @@ export default function Login() {
                     className="space-y-5"
                     noValidate
                   >
-                    {/* EMAIL */}
-                    <AnimatedInput
-                      label="Email Address"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      icon={<Mail size={16} />}
-                      error={errors.email}
-                      autoComplete="email"
-                      placeholder="you@example.com"
-                      endElement={
-                        isEmailVerified ? (
-                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold select-none">
-                            <CheckCircle2 size={13} />
-                            <span>Verified</span>
-                          </div>
-                        ) : isEmailFormatValid ? (
-                          <Button2
-                            type="button"
-                            onClick={handleSendVerificationOtp}
-                            disabled={isSendingOtp}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold hover:bg-[#6e092c] transition shadow-xs disabled:opacity-60 cursor-pointer"
-                          >
-                            {isSendingOtp ? (
-                              <>
-                                <Loader2 size={12} className="animate-spin text-white" />
-                                <span>Sending...</span>
-                              </>
-                            ) : (
-                              <span>Verify</span>
-                            )}
-                          </Button2>
-                        ) : null
-                      }
-                    />
+                  {/* EMAIL */}
+                  <AnimatedInput label="Email Address"
+                                        name="email"
+                                        type="email"
+                                        placeholder="you@example.com"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        icon={<Mail size={16} />}
+                                        error={errors.email}
+                                        autoComplete="email"
+                                        inputClassName="pr-24"
+                                        endElement={
+                                          isEmailVerified ? (
+                                            <div
+                                              role="status"
+                                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold select-none"
+                                            >
+                                              <CheckCircle2 size={13} />
+                                              <span>Verified</span>
+                                            </div>
+                                          ) : isSendingOtp ? (
+                                            <Button2
+                                              type="button"
+                                              disabled
+                                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold transition shadow-xs opacity-80 cursor-wait"
+                                            >
+                                              <Loader2 size={12} className="animate-spin text-white" />
+                                              <span>Sending...</span>
+                                            </Button2>
+                                          ) : isOtpSent ? (
+                                            <div
+                                              role="status"
+                                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FFF5E4] text-[#850E35] border border-[#850E35]/20 text-xs font-bold select-none"
+                                            >
+                                              <CheckCircle2 size={13} />
+                                              <span>Sent</span>
+                                            </div>
+                                          ) : isEmailFormatValid ? (
+                                            <Button2
+                                              type="button"
+                                              onClick={handleSendVerificationOtp}
+                                              disabled={isSendingOtp}
+                                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#850E35] text-white text-xs font-bold hover:bg-[#6e092c] transition shadow-xs disabled:opacity-60 cursor-pointer"
+                                            >
+                                              <span>Verify</span>
+                                            </Button2>
+                                          ) : null
+                                        }
+                                      />
 
                     {/* OTP VERIFICATION COMPONENT (Appears after email with smooth animation) */}
                     <AnimatePresence>
@@ -207,20 +266,25 @@ export default function Login() {
                             variant="inline"
                             email={formData.email}
                             length={6}
+                            successActionText="Enter your password to sign in"
                             onVerify={async (otpCode) => {
-                              // Verify OTP (simulated backend call)
-                              await new Promise((resolve) => setTimeout(resolve, 800));
-                              if (otpCode === "000000") {
-                                throw new Error("Invalid verification code. Please check your inbox.");
+                              try {
+                                await verifyLoginOtp(formData.email, otpCode);
+                                setIsEmailVerified(true);
+                                setErrors((prev) => ({ ...prev, email: "", general: "" }));
+                                setTimeout(() => {
+                                  setShowOtpInput(false);
+                                }, 1000);
+                              } catch (err) {
+                                throw new Error(err.message || "Invalid verification code.");
                               }
-                              setIsEmailVerified(true);
-                              setErrors((prev) => ({ ...prev, email: "" }));
-                              setTimeout(() => {
-                                setShowOtpInput(false);
-                              }, 1200);
                             }}
                             onResend={async () => {
-                              await new Promise((resolve) => setTimeout(resolve, 700));
+                              try {
+                                await sendLoginOtp(formData.email);
+                              } catch (err) {
+                                throw new Error(err.message || "Failed to resend code.");
+                              }
                             }}
                           />
                         </motion.div>
@@ -266,22 +330,12 @@ export default function Login() {
                       </div>
                     </div>
 
-                    {/* REMEMBER ME */}
-                    <div className="pt-1">
-                      <label className="flex cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          name="remember"
-                          checked={formData.remember}
-                          onChange={handleChange}
-                          className="h-4 w-4 accent-[#850E35]"
-                        />
-
-                        <span className="text-[10px] font-medium text-[#850E35]/55">
-                          Remember me
-                        </span>
-                      </label>
-                    </div>
+                    {/* GENERAL ERROR MESSAGE */}
+                    {errors.general && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center text-xs font-medium text-red-600 animate-in fade-in duration-200">
+                        {errors.general}
+                      </div>
+                    )}
 
                     {/* LOGIN BUTTON */}
                     <Button1
@@ -316,6 +370,13 @@ export default function Login() {
                     onClick={handleGoogleAuth}
                   />
 
+                  {/* GENERAL GOOGLE / OAUTH ERROR MESSAGE */}
+                  {errors.google && (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-center text-xs font-medium text-red-600 animate-in fade-in duration-200">
+                      {errors.google}
+                    </div>
+                  )}
+
                   {/* REGISTER */}
                   <div className="mt-6 border-t border-[#850E35]/10 pt-5 text-center">
                     <p className="text-xs text-[#850E35]/50">
@@ -328,8 +389,7 @@ export default function Login() {
                       </Link>
                     </p>
                   </div>
-                </div>
-              </CardGlare>
+                </CardGlare>
             </div>
 
             {/* RIGHT CONTENT (TEXT) */}

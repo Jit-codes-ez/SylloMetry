@@ -81,7 +81,10 @@ export default function AuthCallback() {
 
         const isAlreadyExists =
           err.status === 409 ||
-          (err.message && err.message.toLowerCase().includes('already exists'));
+          (err.message && (
+            err.message.toLowerCase().includes('already exists') ||
+            err.message.toLowerCase().includes('registered using')
+          ));
 
         if (isAlreadyExists) {
           setStatus('account_exists');
@@ -199,18 +202,18 @@ export default function AuthCallback() {
             </div>
             <div className="pt-2 flex flex-col sm:flex-row gap-3">
               <Button2
-                href="/signup"
+                href="/signin"
                 className="w-full py-3 rounded-xl font-bold text-xs bg-[#850E35] text-white hover:bg-[#6e092c] shadow-xs"
               >
-                <span>Back to Sign Up</span>
+                <span>Back to Sign In</span>
                 <ArrowRight size={14} />
               </Button2>
               <Button2
-                href="/signin"
+                href="/signup"
                 variant="secondary"
                 className="w-full py-3 rounded-xl font-bold text-xs shadow-xs"
               >
-                <span>Go to Sign In</span>
+                <span>Go to Sign Up</span>
               </Button2>
             </div>
           </div>

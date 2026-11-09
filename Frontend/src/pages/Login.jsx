@@ -14,7 +14,7 @@ import {
   LayoutDashboard,
   TrendingUp,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import TextAnimation from '@/components/TextAnimation';
 import { CardGlare } from "@/components/CardGlare";
 import { AnimatedInput } from "@/components/AnimatedInput";
@@ -32,6 +32,7 @@ import {
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -161,7 +162,8 @@ export default function Login() {
         }
       }
 
-      navigate("/dashboard");
+      const from = location.state?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
     } catch (err) {
       const msg = err.message || "Failed to sign in. Please verify your credentials.";
       setErrors((prev) => ({

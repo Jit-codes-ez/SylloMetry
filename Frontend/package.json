@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@untitledui/file-icons": "^0.0.9",
     "@untitledui/icons": "^0.0.22",
     "autoprefixer": "^10.5.6",

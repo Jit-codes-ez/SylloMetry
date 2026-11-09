@@ -6,6 +6,7 @@ import Reveal from './components/ScrollAnimation';
 import { PageFallback } from './components/PageLoader';
 import { DashboardSkeleton } from './components/ClassicSkeleton';
 import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './routes/ProtectedRoute';
 
 // Code-split pages for production performance and network loading transitions
 const Home = lazy(() => import('./pages/Home'));
@@ -48,6 +49,7 @@ function AppContent() {
                 </Suspense>
               }
             />
+            {/* Public Auth Routes */}
             <Route
               path="/signup"
               element={
@@ -57,7 +59,23 @@ function AppContent() {
               }
             />
             <Route
+              path="/register"
+              element={
+                <Suspense fallback={<PageFallback message="Loading Sign Up..." />}>
+                  <SignUp />
+                </Suspense>
+              }
+            />
+            <Route
               path="/signin"
+              element={
+                <Suspense fallback={<PageFallback message="Loading Sign In..." />}>
+                  <SignIn />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/login"
               element={
                 <Suspense fallback={<PageFallback message="Loading Sign In..." />}>
                   <SignIn />
@@ -80,20 +98,24 @@ function AppContent() {
                 </Suspense>
               }
             />
-            <Route
-              path="/dashboard"
-              element={
-                <Suspense
-                  fallback={
-                    <div className="pt-24 pb-16">
-                      <DashboardSkeleton theme="syllometry" shimmer={true} />
-                    </div>
-                  }
-                >
-                  <Dashboard />
-                </Suspense>
-              }
-            />
+
+            {/* Protected Private Routes - Strictly requires authenticated Supabase session */}
+            <Route element={<ProtectedRoute />}>
+              <Route
+                path="/dashboard"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="pt-24 pb-16">
+                        <DashboardSkeleton theme="syllometry" shimmer={true} />
+                      </div>
+                    }
+                  >
+                    <Dashboard />
+                  </Suspense>
+                }
+              />
+            </Route>
             <Route
               path="/documentation"
               element={

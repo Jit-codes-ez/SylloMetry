@@ -13,7 +13,8 @@ const Home = lazy(() => import('./pages/Home'));
 const SignUp = lazy(() => import('./pages/Register'));
 const SignIn = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
+const Analytics = lazy(() => import('./pages/dashboard/Analytics'));
 const Documentation = lazy(() => import('./pages/Documentation'));
 const FAQSupport = lazy(() => import('./pages/FAQSupport'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -112,6 +113,34 @@ function AppContent() {
                     }
                   >
                     <Dashboard />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/dashboard/analytics"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="pt-24 pb-16">
+                        <DashboardSkeleton theme="syllometry" shimmer={true} />
+                      </div>
+                    }
+                  >
+                    <Analytics />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="pt-24 pb-16">
+                        <DashboardSkeleton theme="syllometry" shimmer={true} />
+                      </div>
+                    }
+                  >
+                    <Analytics />
                   </Suspense>
                 }
               />

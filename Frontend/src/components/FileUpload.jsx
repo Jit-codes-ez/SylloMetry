@@ -209,7 +209,10 @@ export const FileUploadDropZone = ({
         errorMessage && 'border-red-400 bg-red-50/40',
         className
       )}
-      onClick={() => !isDisabled && inputRef.current?.click()}
+      onClick={(e) => {
+        if (e.target === inputRef.current || isDisabled) return;
+        inputRef.current?.click();
+      }}
     >
       <input
         ref={inputRef}
@@ -219,6 +222,7 @@ export const FileUploadDropZone = ({
         disabled={isDisabled}
         accept={accept}
         multiple={allowsMultiple}
+        onClick={(e) => e.stopPropagation()}
         onChange={handleInputChange}
       />
 
@@ -310,7 +314,7 @@ export const FileListItem = ({
       {/* Progress Fill Background (as seen in Untitled UI demo) */}
       {isUploading && (
         <div
-          className="absolute inset-y-0 left-0 bg-[#850E35]/8 dark:bg-white/10 transition-all duration-300 pointer-events-none rounded-xl"
+          className="absolute inset-y-0 left-0 bg-[#850E35]/8 dark:bg-white/10 transition-all duration-150 ease-out pointer-events-none rounded-xl"
           style={{ width: `${progress}%` }}
         />
       )}
@@ -389,7 +393,7 @@ export const FileListItem = ({
         {isUploading && (
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#850E35]/15">
             <div
-              className="h-full rounded-full bg-[#850E35] transition-all duration-300 ease-out"
+              className="h-full rounded-full bg-[#850E35] transition-all duration-150 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -423,6 +427,30 @@ export const FileUpload = {
 };
 
 /**
+ * Normalizes any incoming file item (native File, or saved metadata object)
+ */
+export const normalizeFileItem = (item, idx = 0) => {
+  if (!item) return null;
+  const isRawFile = typeof File !== 'undefined' && item instanceof File;
+  const id = item.id || `file-${idx}-${item.name || Math.random().toString(36).substring(2, 9)}`;
+  return {
+    id,
+    file: item.file || (isRawFile ? item : null),
+    name: item.name || 'Uploaded Document',
+    size: typeof item.size === 'number' ? item.size : 0,
+    progress: typeof item.progress === 'number' ? item.progress : 100,
+    failed: Boolean(item.failed),
+    isInvalid: Boolean(item.isInvalid),
+    errorMessage: item.errorMessage || null,
+  };
+};
+
+export const normalizeFiles = (fileList) => {
+  if (!Array.isArray(fileList)) return [];
+  return fileList.map(normalizeFileItem).filter(Boolean);
+};
+
+/**
  * Default Plug-and-Play FileUpload component with built-in state handling
  */
 export default function FileUploadComponent({
@@ -437,45 +465,106 @@ export default function FileUploadComponent({
   className,
   ...props
 }) {
-  const [files, setFiles] = useState(initialFiles);
+  const [files, setFiles] = useState(() => normalizeFiles(initialFiles));
+  const activeTimersRef = useRef(new Map());
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      activeTimersRef.current.forEach((t) => clearInterval(t));
+      activeTimersRef.current.clear();
+    };
+  }, []);
+
+  // Sync internal files when initialFiles changes from parent (e.g. navigation return, reset)
+  useEffect(() => {
+    // If an upload is actively animating, never wipe it
+    const isActivelyUploading = files.some((f) => !f.failed && !f.isInvalid && f.progress < 100);
+    if (isActivelyUploading) {
+      return;
+    }
+
+    const normalized = normalizeFiles(initialFiles);
+    // If parent explicitly cleared initialFiles (e.g. Upload Another)
+    if (normalized.length === 0) {
+      setFiles((prev) => (prev.length > 0 ? [] : prev));
+      return;
+    }
+    // If parent passed initial files from storage
+    setFiles((prev) => {
+      const prevSig = prev.map((f) => `${f.name}-${f.size}`).join('|');
+      const newSig = normalized.map((f) => `${f.name}-${f.size}`).join('|');
+      if (prevSig !== newSig) {
+        return normalized;
+      }
+      return prev;
+    });
+  }, [initialFiles]);
 
   const effectiveMaxFiles = allowsMultiple ? (maxFiles ?? Infinity) : 1;
   const isLimitReached = files.length >= effectiveMaxFiles;
   const isDropzoneDisabled = isDisabled || isLimitReached;
 
-  // Smoothly animate progress for newly uploaded files
-  useEffect(() => {
-    const activeUploading = files.some((f) => !f.failed && !f.isInvalid && f.progress < 100);
-    if (!activeUploading) return;
+  // Realistic progressive upload simulator with natural easing curve
+  const startFileUpload = (item) => {
+    const file = item.file;
+    const startTime = Date.now();
+    const fileSize = file?.size || item.size || 500000;
 
-    const interval = setInterval(() => {
-      setFiles((prev) => {
-        let reachedComplete = false;
-        const next = prev.map((item) => {
-          if (!item.failed && !item.isInvalid && item.progress < 100) {
-            const nextProgress = Math.min(100, item.progress + 25);
-            if (nextProgress === 100) {
-              reachedComplete = true;
-            }
-            return {
-              ...item,
-              progress: nextProgress,
-            };
-          }
-          return item;
-        });
+    // Scale duration naturally: 700ms for small files, up to 1300ms for large files
+    const targetDuration = Math.min(
+      1300,
+      Math.max(700, Math.round((fileSize / (3 * 1024 * 1024)) * 600 + 700))
+    );
 
-        if (reachedComplete) {
+    let currentProgress = 12;
+    const intervalMs = 35;
+
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const rawFactor = Math.min(1, elapsed / targetDuration);
+      // Quad ease-out: starts fast, smoothly decelerates toward 100%
+      const easeFactor = 1 - Math.pow(1 - rawFactor, 2);
+      const nextProgress = Math.min(97, Math.max(currentProgress, Math.round(easeFactor * 97)));
+
+      currentProgress = nextProgress;
+
+      setFiles((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, progress: nextProgress } : f))
+      );
+
+      if (elapsed >= targetDuration) {
+        clearInterval(timer);
+        activeTimersRef.current.delete(item.id);
+
+        setFiles((prev) => {
+          const next = prev.map((f) => (f.id === item.id ? { ...f, progress: 100 } : f));
           const completed = next.filter((f) => !f.failed && !f.isInvalid && f.progress === 100);
           onFilesChange?.(completed.map((i) => i.file || i));
-        }
+          return next;
+        });
+      }
+    }, intervalMs);
 
-        return next;
-      });
-    }, 250);
+    activeTimersRef.current.set(item.id, timer);
 
-    return () => clearInterval(interval);
-  }, [files, onFilesChange]);
+    // Verify real file readability with browser FileReader
+    if (file && typeof FileReader !== 'undefined') {
+      const reader = new FileReader();
+      reader.onerror = () => {
+        clearInterval(timer);
+        activeTimersRef.current.delete(item.id);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? { ...f, failed: true, errorMessage: 'Failed to read file from disk' }
+              : f
+          )
+        );
+      };
+      reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 512 * 1024)));
+    }
+  };
 
   const handleDropFiles = (acceptedFiles) => {
     if (isDropzoneDisabled) return;
@@ -486,27 +575,27 @@ export default function FileUploadComponent({
     if (!filesToTake.length) return;
 
     const newItems = filesToTake.map((file) => ({
-      id: Math.random().toString(36).substring(2, 9),
+      id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       file,
       name: file.name,
       size: file.size,
-      progress: 15, // Starts upload animation
+      progress: 12, // Initial progress shown immediately
       failed: false,
       isInvalid: false,
     }));
 
     const updated = allowsMultiple ? [...files, ...newItems] : newItems;
     setFiles(updated);
-    // Only emit 100% completed files - not files currently in progress of being uploaded
-    const completed = updated.filter((f) => !f.failed && !f.isInvalid && f.progress === 100);
-    onFilesChange?.(completed.map((i) => i.file || i));
+
+    // Start realistic upload animation
+    newItems.forEach((item) => startFileUpload(item));
   };
 
   const handleDropUnacceptedFiles = (unacceptedFiles) => {
     if (isDropzoneDisabled) return;
 
     const invalidItems = Array.from(unacceptedFiles || []).map((file) => ({
-      id: Math.random().toString(36).substring(2, 9),
+      id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       file,
       name: file.name,
       size: file.size,
@@ -526,7 +615,7 @@ export default function FileUploadComponent({
     if (isDropzoneDisabled) return;
 
     const invalidItems = Array.from(oversizedFiles || []).map((file) => ({
-      id: Math.random().toString(36).substring(2, 9),
+      id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       file,
       name: file.name,
       size: file.size,
@@ -543,6 +632,10 @@ export default function FileUploadComponent({
   };
 
   const handleDelete = (id) => {
+    if (activeTimersRef.current.has(id)) {
+      clearInterval(activeTimersRef.current.get(id));
+      activeTimersRef.current.delete(id);
+    }
     const updated = files.filter((f) => f.id !== id);
     setFiles(updated);
     const completed = updated.filter((f) => !f.failed && !f.isInvalid && f.progress === 100);
@@ -550,22 +643,18 @@ export default function FileUploadComponent({
   };
 
   const handleRetry = (id) => {
-    setFiles((prev) => {
-      const next = prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
-            failed: false,
-            isInvalid: false,
-            progress: 20, // restarts upload animation
-          };
-        }
-        return item;
-      });
-      const completed = next.filter((f) => !f.failed && !f.isInvalid && f.progress === 100);
-      onFilesChange?.(completed.map((i) => i.file || i));
-      return next;
-    });
+    const item = files.find((f) => f.id === id);
+    if (!item) return;
+
+    const resetItem = {
+      ...item,
+      failed: false,
+      isInvalid: false,
+      progress: 12,
+    };
+
+    setFiles((prev) => prev.map((f) => (f.id === id ? resetItem : f)));
+    startFileUpload(resetItem);
   };
 
   return (

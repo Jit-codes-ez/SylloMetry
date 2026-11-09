@@ -21,6 +21,11 @@ export default function Navbar() {
   const { user, isAuthenticated, signOut } = useAuth();
 
   const isMinimalNavPage = location.pathname !== '/';
+  const isAnalyticsPage =
+    location.pathname === '/dashboard/analytics' ||
+    location.pathname.startsWith('/dashboard/analytics') ||
+    location.pathname === '/analytics' ||
+    location.pathname.startsWith('/analytics');
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -171,18 +176,18 @@ export default function Navbar() {
         {/* Right Section: Contextual Actions */}
         {isMinimalNavPage ? (
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Back to Home Button */}
+            {/* Contextual Back Button: "Dashboard" on Analytics, "Home" on Dashboard & other pages */}
             <Button2
-              href="/"
+              href={isAnalyticsPage ? '/dashboard' : '/'}
               variant="nav"
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#850E35]/85 hover:text-[#850E35] hover:bg-[#FFF5E4] border border-[#850E35]/20 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5 text-[#850E35]" />
-              <span>Home</span>
+              <span>{isAnalyticsPage ? 'Dashboard' : 'Home'}</span>
             </Button2>
 
             {/* User Pill Button beside Home Button */}
-            {(isAuthenticated || location.pathname === '/dashboard' || Boolean(localStorage.getItem('supabase_token') || localStorage.getItem('syllo_user'))) && (
+            {(isAuthenticated || location.pathname.startsWith('/dashboard') || location.pathname === '/analytics' || Boolean(localStorage.getItem('supabase_token') || localStorage.getItem('syllo_user'))) && (
               <UserAvatarMenu user={user} onSignOut={signOut} />
             )}
           </div>

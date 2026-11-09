@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { LayoutDashboard, LogOut, Sparkles } from "lucide-react";
+import { LayoutDashboard, LogOut, Sparkles, BarChart3 } from "lucide-react";
 import { Button2 } from "@/components/Button2";
 
 /**
@@ -58,6 +58,18 @@ export default function UserAvatarMenu({ user, onSignOut }) {
     } catch {}
     return null;
   }, [user]);
+
+  // Check if curriculum has been analyzed before opening analytics
+  const isCurriculumAnalyzed = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("syllometry_curriculum_state");
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed?.analysisComplete && parsed?.files?.length > 0);
+    } catch {
+      return false;
+    }
+  }, [isOpen]);
 
   // Formats display name: "Alex Doe" -> "Alex D."
   const displayName = useMemo(() => {
@@ -170,6 +182,22 @@ export default function UserAvatarMenu({ user, onSignOut }) {
                 <LayoutDashboard size={15} />
                 <span>Go to Dashboard</span>
               </Link>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (isCurriculumAnalyzed) {
+                    navigate("/dashboard/analytics");
+                  } else {
+                    navigate("/dashboard?warn=no_curriculum");
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl font-semibold text-[#850E35] hover:bg-[#FFF5E4] transition-colors text-left cursor-pointer"
+              >
+                <BarChart3 size={15} />
+                <span>Analytics</span>
+              </button>
 
               <button
                 type="button"

@@ -108,6 +108,7 @@ export default function Register() {
     setErrors((prev) => ({ ...prev, general: "", email: "" }));
     try {
       sessionStorage.setItem("oauth_mode", "signup");
+      localStorage.setItem("oauth_mode", "signup");
 
       // Before authenticating Google account, check if email exists in public.users
       const emailInput = formData.email?.trim();

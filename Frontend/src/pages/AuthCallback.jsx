@@ -3,14 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Button2 } from '@/components/Button2';
 import { syncOAuthUser } from '@/lib/auth';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   // Status: 'processing' | 'success' | 'account_exists' | 'error'
   const [status, setStatus] = useState('processing');
   const [errorMessage, setErrorMessage] = useState('');
+  const hasProcessedRef = useRef(false);
 
   useEffect(() => {
+    if (hasProcessedRef.current) return;
+    hasProcessedRef.current = true;
+
     async function processOAuthCallback() {
       try {
         // 1. Check for errors in URL search or hash
@@ -30,66 +37,184 @@ export default function AuthCallback() {
           throw new Error(errorDesc || error || 'Google sign in failed or was cancelled.');
         }
 
-        // 2. Extract access_token from hash (implicit OAuth flow)
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
+        // 2. Resolve mode ('signin' | 'signup')
+        const mode =
+          sessionStorage.getItem('oauth_mode') ||
+          localStorage.getItem('oauth_mode') ||
+          'signin';
 
-        if (accessToken) {
-          const mode = sessionStorage.getItem('oauth_mode') || 'signup';
+        // 3. Robust session extraction:
+        // Supabase JS client handles OAuth callback in the background and may have
+        // already extracted the token or code before this component's effect fires.
+        let activeSession = null;
 
-          // Check database and synchronize user
-          const syncResult = await syncOAuthUser(accessToken, mode);
-
-          // Save valid session tokens and profile
-          localStorage.setItem('supabase_token', accessToken);
-          if (refreshToken) {
-            localStorage.setItem('supabase_refresh_token', refreshToken);
+        // A. Check if standard PKCE code is in searchParams and exchange it
+        const code = searchParams.get('code');
+        if (code) {
+          try {
+            const { data: codeData, error: codeErr } =
+              await supabase.auth.exchangeCodeForSession(code);
+            if (codeData?.session) {
+              activeSession = codeData.session;
+            } else if (codeErr) {
+              console.warn('Supabase exchangeCodeForSession notice:', codeErr.message);
+            }
+          } catch (e) {
+            console.warn('exchangeCodeForSession error:', e);
           }
-          if (syncResult?.user) {
-            localStorage.setItem('syllo_user', JSON.stringify(syncResult.user));
-          }
+        }
 
-          // If mode is 'signin', redirect to dashboard
-          if (mode === 'signin') {
-            navigate('/dashboard');
+        // B. Check if access_token is in URL hash (implicit flow)
+        if (!activeSession) {
+          const hashAccessToken = hashParams.get('access_token');
+          const hashRefreshToken = hashParams.get('refresh_token');
+
+          if (hashAccessToken) {
+            try {
+              const { data: setData } = await supabase.auth.setSession({
+                access_token: hashAccessToken,
+                refresh_token: hashRefreshToken || '',
+              });
+              activeSession = setData?.session || {
+                access_token: hashAccessToken,
+                refresh_token: hashRefreshToken,
+              };
+            } catch {
+              activeSession = {
+                access_token: hashAccessToken,
+                refresh_token: hashRefreshToken,
+              };
+            }
+          }
+        }
+
+        // C. Check if Supabase client already initialized and has the session in storage
+        if (!activeSession) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            activeSession = sessionData.session;
+          }
+        }
+
+        // D. Check if localStorage already has the token from AuthContext rehydration
+        if (!activeSession) {
+          const localToken = localStorage.getItem('supabase_token');
+          if (localToken) {
+            activeSession = { access_token: localToken };
+          }
+        }
+
+        // E. Fallback: wait briefly for onAuthStateChange in case background exchange is finalizing
+        if (!activeSession) {
+          activeSession = await new Promise((resolve) => {
+            let timer = null;
+            const {
+              data: { subscription },
+            } = supabase.auth.onAuthStateChange((_event, session) => {
+              if (session?.access_token) {
+                if (timer) clearTimeout(timer);
+                subscription?.unsubscribe();
+                resolve(session);
+              }
+            });
+
+            timer = setTimeout(async () => {
+              subscription?.unsubscribe();
+              const { data: finalData } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+              resolve(finalData?.session || null);
+            }, 1800);
+          });
+        }
+
+        // If no credentials or session could be found anywhere
+        if (!activeSession?.access_token) {
+          throw new Error('No authentication credentials were found in the callback URL.');
+        }
+
+        const accessToken = activeSession.access_token;
+        const refreshToken = activeSession.refresh_token;
+
+        // 4. Synchronize user with database
+        let syncResult = null;
+        try {
+          syncResult = await syncOAuthUser(accessToken, mode);
+        } catch (syncErr) {
+          const isAlreadyExists =
+            syncErr.status === 409 ||
+            (syncErr.message &&
+              (syncErr.message.toLowerCase().includes('already exists') ||
+                syncErr.message.toLowerCase().includes('registered using')));
+
+          if (isAlreadyExists && mode === 'signup') {
+            setStatus('account_exists');
+            setErrorMessage(
+              syncErr.message ||
+                'An account with this email already exists in SylloMetry. Please sign in instead.'
+            );
             return;
           }
 
-          // For 'signup', show account creation success modal (do NOT redirect to dashboard)
-          setStatus('success');
-          return;
-        }
-
-        // 3. Fallback: check if standard query code exists
-        const code = searchParams.get('code');
-        if (code) {
-          const mode = sessionStorage.getItem('oauth_mode') || 'signup';
-          if (mode === 'signin') {
-            navigate('/dashboard');
-          } else {
-            setStatus('success');
+          if (syncErr.status === 404 && mode === 'signin') {
+            setStatus('error');
+            setErrorMessage(
+              syncErr.message ||
+                'No SylloMetry account found with this email address. Please sign up first.'
+            );
+            return;
           }
+
+          console.warn('OAuth database sync non-fatal error:', syncErr);
+        }
+
+        // 5. Persist tokens and enriched user profile
+        localStorage.setItem('supabase_token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('supabase_refresh_token', refreshToken);
+        }
+        if (syncResult?.user) {
+          localStorage.setItem('syllo_user', JSON.stringify(syncResult.user));
+          if (typeof login === 'function') {
+            login(accessToken, syncResult.user, refreshToken);
+          }
+        }
+
+        // Clean up temporary mode markers
+        sessionStorage.removeItem('oauth_mode');
+        localStorage.removeItem('oauth_mode');
+
+        // 6. Navigation based on mode
+        if (mode === 'signin') {
+          navigate('/dashboard', { replace: true });
           return;
         }
 
-        // If neither token nor code was provided in callback URL
-        throw new Error('No authentication credentials were found in the callback URL.');
+        // For 'signup', show account creation success card
+        setStatus('success');
       } catch (err) {
-        // Clear any stored tokens since the operation failed or was rejected
-        localStorage.removeItem('supabase_token');
-        localStorage.removeItem('supabase_refresh_token');
+        // Before showing an error, perform a final sanity check:
+        // If the user already has an active Supabase session (e.g. from concurrent background exchange),
+        // redirect them to the dashboard instead of flashing a false error.
+        try {
+          const { data: sanityCheck } = await supabase.auth.getSession();
+          if (sanityCheck?.session?.access_token) {
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        } catch {
+          // Continue to error display
+        }
 
         const isAlreadyExists =
           err.status === 409 ||
-          (err.message && (
-            err.message.toLowerCase().includes('already exists') ||
-            err.message.toLowerCase().includes('registered using')
-          ));
+          (err.message &&
+            (err.message.toLowerCase().includes('already exists') ||
+              err.message.toLowerCase().includes('registered using')));
 
         if (isAlreadyExists) {
           setStatus('account_exists');
           setErrorMessage(
-            err.message || 'An account with this email already exists in SylloMetry. Please sign in instead.'
+            err.message ||
+              'An account with this email already exists in SylloMetry. Please sign in instead.'
           );
         } else {
           setStatus('error');
@@ -99,7 +224,7 @@ export default function AuthCallback() {
     }
 
     processOAuthCallback();
-  }, [navigate]);
+  }, [navigate, login]);
 
   return (
     <div className="min-h-screen bg-[#FFFBF1] text-[#850E35] flex items-center justify-center p-4 pt-20">

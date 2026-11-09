@@ -80,6 +80,7 @@ export default function Login() {
     setErrors((prev) => ({ ...prev, general: "" }));
     try {
       sessionStorage.setItem("oauth_mode", "signin");
+      localStorage.setItem("oauth_mode", "signin");
       const authUrl = await getGoogleSignupUrl();
       window.location.href = authUrl;
     } catch (err) {

@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Button2 } from '@/components/Button2';
 import { cn } from '@/lib/utils';
 import ScrollProgressBar from '@/components/ScrollProgressBar';
+import { useAuth } from '@/context/AuthContext';
+import UserAvatarMenu from '@/components/UserAvatarMenu';
 
 const NAV_LINKS = [
   { id: 'home', href: '/#home', label: 'Home' },
@@ -16,6 +18,7 @@ const NAV_LINKS = [
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated, signOut } = useAuth();
 
   const isMinimalNavPage = location.pathname !== '/';
 
@@ -177,17 +180,36 @@ export default function Navbar() {
               <ArrowLeft className="w-3.5 h-3.5 text-[#850E35]" />
               <span>Home</span>
             </Button2>
+
+            {/* User Pill Button beside Home Button */}
+            {(isAuthenticated || location.pathname === '/dashboard' || Boolean(localStorage.getItem('supabase_token') || localStorage.getItem('syllo_user'))) && (
+              <UserAvatarMenu user={user} onSignOut={signOut} />
+            )}
           </div>
         ) : (
           <div className="hidden sm:flex items-center gap-3">
-            <Button2
-              href="/signin"
-              variant="default"
-              className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs shadow-[#850E35]/25 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-            >
-              <span>Sign In</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </Button2>
+            {isAuthenticated ? (
+              <div className="flex items-center gap-3">
+                <Button2
+                  href="/dashboard"
+                  variant="nav"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#850E35] hover:bg-[#FFF5E4] border border-[#850E35]/20 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+                >
+                  <span>Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#850E35]" />
+                </Button2>
+                <UserAvatarMenu user={user} onSignOut={signOut} />
+              </div>
+            ) : (
+              <Button2
+                href="/signin"
+                variant="default"
+                className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs shadow-[#850E35]/25 hover:shadow-md transition-all active:scale-95 cursor-pointer"
+              >
+                <span>Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </Button2>
+            )}
           </div>
         )}
 
@@ -232,18 +254,34 @@ export default function Navbar() {
             );
           })}
           <div className="pt-2 border-t border-[#850E35]/10">
-            <Button2
-              href="/signin"
-              onClick={() => {
-                setTimeout(() => {
-                  setMobileMenuOpen(false);
-                }, 220);
-              }}
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs cursor-pointer"
-            >
-              <span>Sign In</span>
-              <ArrowRight className="w-4 h-4" />
-            </Button2>
+            {isAuthenticated ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between p-2 rounded-2xl bg-white/70 border border-[#850E35]/15">
+                  <UserAvatarMenu user={user} onSignOut={signOut} />
+                  <Button2
+                    href="/dashboard"
+                    variant="nav"
+                    className="text-xs font-semibold text-[#850E35] px-3 py-1.5"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Dashboard
+                  </Button2>
+                </div>
+              </div>
+            ) : (
+              <Button2
+                href="/signin"
+                onClick={() => {
+                  setTimeout(() => {
+                    setMobileMenuOpen(false);
+                  }, 220);
+                }}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs cursor-pointer"
+              >
+                <span>Sign In</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button2>
+            )}
           </div>
         </div>
       )}

@@ -642,6 +642,12 @@ class SignupService:
             if mode == "signup":
                 if user_already_existed:
                     logger.info("OAuth signup rejected: user already exists for %s", email)
+                    # If this OAuth attempt created a separate new auth user, clean it up
+                    if self.admin_client and str(user_row.get("id")) != target_user_id:
+                        try:
+                            self.admin_client.auth.admin.delete_user(target_user_id)
+                        except Exception as del_err:
+                            logger.warning("Error deleting duplicate auth user %s: %s", target_user_id, str(del_err))
                     reg_by = ((user_row.get("registration_by") if user_row else None) or "").strip().lower()
                     if reg_by == "email":
                         raise HTTPException(
@@ -657,12 +663,27 @@ class SignupService:
             if mode == "signin":
                 if not user_row or is_trigger_created_fresh_row:
                     logger.info("OAuth signin rejected: no pre-existing user found for %s", email)
-                    # If trigger created a row for this uninvited signin, clean it up
-                    if is_trigger_created_fresh_row:
+                    # Complete cleanup: purge any stray row in public.users and purge from auth.users
+                    if self.admin_client:
+                        try:
+                            self.admin_client.table("users").delete().eq("id", target_user_id).execute()
+                        except Exception:
+                            pass
+                        try:
+                            self.admin_client.table("users").delete().ilike("email", email).execute()
+                        except Exception:
+                            pass
+                        try:
+                            self.admin_client.auth.admin.delete_user(target_user_id)
+                            logger.info("Purged uninvited auth user %s (%s) from auth.users", target_user_id, email)
+                        except Exception as del_err:
+                            logger.warning("Error purging user from auth.users: %s", str(del_err))
+                    else:
                         try:
                             target_client.table("users").delete().eq("id", target_user_id).execute()
                         except Exception:
                             pass
+
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="No SylloMetry account found with this email address. Please sign up first.",
@@ -677,21 +698,27 @@ class SignupService:
                 or email.split("@")[0].title()
             )
 
-            # Persist finalized profile to public.users with registration_by = 'Google'
+            # Preserve existing registration mode if present, else default to 'Google'
+            final_registration_by = (
+                (user_row.get("registration_by") if user_row else None)
+                or "Google"
+            )
+
+            # Persist finalized profile to public.users
             target_client.table("users").upsert({
                 "id": target_user_id,
                 "email": email,
                 "full_name": full_name,
-                "registration_by": "Google",
+                "registration_by": final_registration_by,
             }).execute()
 
-            logger.info("Google OAuth user synchronized successfully with registration_by='Google': %s", email)
+            logger.info("Google OAuth user synchronized successfully with registration_by='%s': %s", final_registration_by, email)
 
             safe_user = SafeUser(
                 id=target_user_id,
                 email=email,
                 full_name=full_name,
-                registration_by="Google",
+                registration_by=final_registration_by,
                 created_at=now_iso,
                 email_confirmed=True,
             )

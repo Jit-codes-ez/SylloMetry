@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, signOut, logout } = useAuth();
   // Status: 'processing' | 'success' | 'account_exists' | 'error'
   const [status, setStatus] = useState('processing');
   const [errorMessage, setErrorMessage] = useState('');
@@ -17,6 +17,23 @@ export default function AuthCallback() {
   useEffect(() => {
     if (hasProcessedRef.current) return;
     hasProcessedRef.current = true;
+
+    const cleanupRejectedSession = async () => {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      if (typeof signOut === 'function') {
+        try { await signOut(); } catch {}
+      }
+      if (typeof logout === 'function') {
+        try { await logout(); } catch {}
+      }
+      localStorage.removeItem('supabase_token');
+      localStorage.removeItem('supabase_refresh_token');
+      localStorage.removeItem('syllo_user');
+      sessionStorage.removeItem('oauth_mode');
+      localStorage.removeItem('oauth_mode');
+    };
 
     async function processOAuthCallback() {
       try {
@@ -139,6 +156,9 @@ export default function AuthCallback() {
         try {
           syncResult = await syncOAuthUser(accessToken, mode);
         } catch (syncErr) {
+          // Immediately tear down any active session and storage
+          await cleanupRejectedSession();
+
           const isAlreadyExists =
             syncErr.status === 409 ||
             (syncErr.message &&
@@ -163,7 +183,19 @@ export default function AuthCallback() {
             return;
           }
 
-          console.warn('OAuth database sync non-fatal error:', syncErr);
+          setStatus('error');
+          setErrorMessage(
+            syncErr.message ||
+              'Failed to authenticate account with SylloMetry database. Please try again.'
+          );
+          return;
+        }
+
+        if (!syncResult?.user) {
+          await cleanupRejectedSession();
+          setStatus('error');
+          setErrorMessage('Unable to retrieve SylloMetry user profile. Please try again.');
+          return;
         }
 
         // 5. Persist tokens and enriched user profile
@@ -171,10 +203,10 @@ export default function AuthCallback() {
         if (refreshToken) {
           localStorage.setItem('supabase_refresh_token', refreshToken);
         }
-        if (syncResult?.user) {
+        if (syncResult.user) {
           localStorage.setItem('syllo_user', JSON.stringify(syncResult.user));
           if (typeof login === 'function') {
-            login(accessToken, syncResult.user, refreshToken);
+            await login(accessToken, syncResult.user, refreshToken);
           }
         }
 
@@ -191,18 +223,8 @@ export default function AuthCallback() {
         // For 'signup', show account creation success card
         setStatus('success');
       } catch (err) {
-        // Before showing an error, perform a final sanity check:
-        // If the user already has an active Supabase session (e.g. from concurrent background exchange),
-        // redirect them to the dashboard instead of flashing a false error.
-        try {
-          const { data: sanityCheck } = await supabase.auth.getSession();
-          if (sanityCheck?.session?.access_token) {
-            navigate('/dashboard', { replace: true });
-            return;
-          }
-        } catch {
-          // Continue to error display
-        }
+        // Invalidate any session and storage completely
+        await cleanupRejectedSession();
 
         const isAlreadyExists =
           err.status === 409 ||
@@ -224,7 +246,7 @@ export default function AuthCallback() {
     }
 
     processOAuthCallback();
-  }, [navigate, login]);
+  }, [navigate, login, signOut, logout]);
 
   return (
     <div className="min-h-screen bg-[#FFFBF1] text-[#850E35] flex items-center justify-center p-4 pt-20">

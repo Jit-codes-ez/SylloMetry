@@ -23,17 +23,44 @@ const AuthContext = createContext({
  * Session Provider managing Supabase JWT state and active user context.
  */
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(() => {
+    if (typeof window === "undefined") return null;
+    const token = localStorage.getItem("supabase_token");
+    const rawUser = localStorage.getItem("syllo_user");
+    if (token && rawUser) {
+      try {
+        const parsed = JSON.parse(rawUser);
+        if (parsed && (parsed.id || parsed.email)) {
+          return { access_token: token, user: parsed };
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  const [user, setUser] = useState(() => {
+    if (typeof window === "undefined") return null;
+    const rawUser = localStorage.getItem("syllo_user");
+    if (rawUser) {
+      try {
+        const parsed = JSON.parse(rawUser);
+        if (parsed && (parsed.id || parsed.email)) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState(false);
 
   // Helper to enrich raw Supabase user object with backend database profile fields
   const syncUserProfile = useCallback(async (token, fallbackUser) => {
-    if (!token) return fallbackUser || null;
+    if (!token) return null;
 
     try {
       const backendUser = await getCurrentUser(token);
-      if (backendUser) {
+      if (backendUser && (backendUser.id || backendUser.email)) {
         localStorage.setItem("syllo_user", JSON.stringify(backendUser));
         return {
           ...fallbackUser,
@@ -44,18 +71,25 @@ export function AuthProvider({ children }) {
       // Retain fallback cached user on temporary network errors
     }
 
-    // Check cached syllo_user
+    // Check cached syllo_user ONLY if it matches the current session user
     const cached = localStorage.getItem("syllo_user");
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return { ...fallbackUser, ...parsed };
+        if (
+          parsed &&
+          (parsed.id || parsed.email) &&
+          (parsed.id === fallbackUser?.id || parsed.email === fallbackUser?.email)
+        ) {
+          return { ...fallbackUser, ...parsed };
+        }
       } catch {
         // Ignore json parse error
       }
     }
 
-    return fallbackUser || null;
+    // If user has no verified record in SylloMetry database, return null
+    return null;
   }, []);
 
   useEffect(() => {
@@ -63,6 +97,15 @@ export function AuthProvider({ children }) {
 
     async function initializeAuth() {
       try {
+        const isCallbackRoute =
+          typeof window !== "undefined" &&
+          window.location.pathname.startsWith("/auth/callback");
+
+        if (isCallbackRoute) {
+          // On OAuth callback route, leave session verification to AuthCallback component
+          return;
+        }
+
         // 1. Initial mount: retrieve active Supabase session
         const {
           data: { session: initialSession },
@@ -76,18 +119,27 @@ export function AuthProvider({ children }) {
         if (!isMounted) return;
 
         if (initialSession) {
-          setSession(initialSession);
-          localStorage.setItem("supabase_token", initialSession.access_token);
-          if (initialSession.refresh_token) {
-            localStorage.setItem("supabase_refresh_token", initialSession.refresh_token);
-          }
-
           const enriched = await syncUserProfile(
             initialSession.access_token,
             initialSession.user
           );
           if (isMounted) {
-            setUser(enriched);
+            if (enriched) {
+              setSession(initialSession);
+              setUser(enriched);
+              localStorage.setItem("supabase_token", initialSession.access_token);
+              if (initialSession.refresh_token) {
+                localStorage.setItem("supabase_refresh_token", initialSession.refresh_token);
+              }
+            } else {
+              // Token exists in Supabase Auth but user is NOT registered in SylloMetry database
+              setSession(null);
+              setUser(null);
+              localStorage.removeItem("supabase_token");
+              localStorage.removeItem("supabase_refresh_token");
+              localStorage.removeItem("syllo_user");
+              await supabase.auth.signOut().catch(() => {});
+            }
           }
         } else {
           // Check if a legacy token exists in localStorage to recover session
@@ -102,13 +154,22 @@ export function AuthProvider({ children }) {
               });
 
               if (!setErr && data?.session && isMounted) {
-                setSession(data.session);
                 const enriched = await syncUserProfile(
                   data.session.access_token,
                   data.session.user
                 );
                 if (isMounted) {
-                  setUser(enriched);
+                  if (enriched) {
+                    setSession(data.session);
+                    setUser(enriched);
+                  } else {
+                    setSession(null);
+                    setUser(null);
+                    localStorage.removeItem("supabase_token");
+                    localStorage.removeItem("supabase_refresh_token");
+                    localStorage.removeItem("syllo_user");
+                    await supabase.auth.signOut().catch(() => {});
+                  }
                 }
               }
             } catch {
@@ -137,25 +198,44 @@ export function AuthProvider({ children }) {
     } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       if (!isMounted) return;
 
-      setSession(currentSession);
+      const isCallbackRoute =
+        typeof window !== "undefined" &&
+        window.location.pathname.startsWith("/auth/callback");
+
+      if (isCallbackRoute) {
+        // Do not prematurely mark authenticated or populate user while on callback route
+        return;
+      }
 
       if (currentSession) {
-        localStorage.setItem("supabase_token", currentSession.access_token);
-        if (currentSession.refresh_token) {
-          localStorage.setItem("supabase_refresh_token", currentSession.refresh_token);
-        }
         const enriched = await syncUserProfile(
           currentSession.access_token,
           currentSession.user
         );
         if (isMounted) {
-          setUser(enriched);
+          if (enriched) {
+            setSession(currentSession);
+            setUser(enriched);
+            localStorage.setItem("supabase_token", currentSession.access_token);
+            if (currentSession.refresh_token) {
+              localStorage.setItem("supabase_refresh_token", currentSession.refresh_token);
+            }
+          } else {
+            // Unregistered user - tear down session
+            setSession(null);
+            setUser(null);
+            localStorage.removeItem("supabase_token");
+            localStorage.removeItem("supabase_refresh_token");
+            localStorage.removeItem("syllo_user");
+            await supabase.auth.signOut().catch(() => {});
+          }
           setLoading(false);
         }
       } else {
         localStorage.removeItem("supabase_token");
         localStorage.removeItem("supabase_refresh_token");
         localStorage.removeItem("syllo_user");
+        setSession(null);
         setUser(null);
         setLoading(false);
       }
@@ -201,6 +281,10 @@ export function AuthProvider({ children }) {
         localStorage.setItem("syllo_user", JSON.stringify(userData));
       }
 
+      // Immediately synchronize React state to eliminate any redirect delays
+      setUser(userData || null);
+      setSession({ access_token: accessToken, user: userData });
+
       try {
         const { data } = await supabase.auth.setSession({
           access_token: accessToken,
@@ -210,13 +294,9 @@ export function AuthProvider({ children }) {
         if (data?.session) {
           setSession(data.session);
           setUser({ ...data.session.user, ...userData });
-        } else {
-          setSession({ access_token: accessToken, user: userData });
-          setUser(userData || null);
         }
-      } catch {
-        setSession({ access_token: accessToken, user: userData });
-        setUser(userData || null);
+      } catch (err) {
+        console.warn("setSession notice during login:", err);
       } finally {
         setLoading(false);
       }
@@ -229,7 +309,11 @@ export function AuthProvider({ children }) {
       user,
       session,
       loading,
-      isAuthenticated: Boolean(session || user),
+      isAuthenticated: Boolean(
+        session &&
+          user &&
+          (user.id || user.email)
+      ),
       signOut,
       logout: signOut,
       login,

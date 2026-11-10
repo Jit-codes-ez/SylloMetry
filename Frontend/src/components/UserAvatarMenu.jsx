@@ -51,10 +51,13 @@ export default function UserAvatarMenu({ user, onSignOut }) {
 
   // Resolve active user (with instant fallback to cached syllo_user in localStorage)
   const activeUser = useMemo(() => {
-    if (user) return user;
+    if (user && (user.id || user.email)) return user;
     try {
       const cached = localStorage.getItem("syllo_user");
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.id || parsed.email)) return parsed;
+      }
     } catch {}
     return null;
   }, [user]);
@@ -108,6 +111,8 @@ export default function UserAvatarMenu({ user, onSignOut }) {
     }
     navigate("/signin");
   };
+
+  if (!activeUser) return null;
 
   return (
     <div className="relative inline-block text-left" ref={menuRef}>

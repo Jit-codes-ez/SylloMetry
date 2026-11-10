@@ -26,6 +26,13 @@ export default function Navbar() {
     location.pathname.startsWith('/dashboard/analytics') ||
     location.pathname === '/analytics' ||
     location.pathname.startsWith('/analytics');
+  const isAuthRoute =
+    location.pathname.startsWith('/auth') ||
+    location.pathname === '/signin' ||
+    location.pathname === '/login' ||
+    location.pathname === '/signup' ||
+    location.pathname === '/register' ||
+    location.pathname === '/forgot-password';
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -186,34 +193,36 @@ export default function Navbar() {
               <span>{isAnalyticsPage ? 'Dashboard' : 'Home'}</span>
             </Button2>
 
-            {/* User Pill Button beside Home Button */}
-            {(isAuthenticated || location.pathname.startsWith('/dashboard') || location.pathname === '/analytics' || Boolean(localStorage.getItem('supabase_token') || localStorage.getItem('syllo_user'))) && (
+            {/* User Pill Button beside Home Button (Never displayed on auth routes) */}
+            {!isAuthRoute && isAuthenticated && user && (user.id || user.email) && (
               <UserAvatarMenu user={user} onSignOut={signOut} />
             )}
           </div>
         ) : (
           <div className="hidden sm:flex items-center gap-3">
-            {isAuthenticated ? (
-              <div className="flex items-center gap-3">
+            {!isAuthRoute && (
+              isAuthenticated && user && (user.id || user.email) ? (
+                <div className="flex items-center gap-3">
+                  <Button2
+                    href="/dashboard"
+                    variant="nav"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#850E35] hover:bg-[#FFF5E4] border border-[#850E35]/20 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+                  >
+                    <span>Dashboard</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-[#850E35]" />
+                  </Button2>
+                  <UserAvatarMenu user={user} onSignOut={signOut} />
+                </div>
+              ) : (
                 <Button2
-                  href="/dashboard"
-                  variant="nav"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#850E35] hover:bg-[#FFF5E4] border border-[#850E35]/20 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+                  href="/signin"
+                  variant="default"
+                  className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs shadow-[#850E35]/25 hover:shadow-md transition-all active:scale-95 cursor-pointer"
                 >
-                  <span>Dashboard</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#850E35]" />
+                  <span>Sign In</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                 </Button2>
-                <UserAvatarMenu user={user} onSignOut={signOut} />
-              </div>
-            ) : (
-              <Button2
-                href="/signin"
-                variant="default"
-                className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#FFFBF1] bg-[#850E35] hover:bg-[#6F0A2B] shadow-xs shadow-[#850E35]/25 hover:shadow-md transition-all active:scale-95 cursor-pointer"
-              >
-                <span>Sign In</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-              </Button2>
+              )
             )}
           </div>
         )}

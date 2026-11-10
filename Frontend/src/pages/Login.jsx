@@ -33,7 +33,15 @@ import {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { user, isAuthenticated, login } = useAuth();
+
+  // If user is already authenticated with a valid profile, redirect immediately to dashboard
+  React.useEffect(() => {
+    if (isAuthenticated && user && (user.id || user.email)) {
+      const from = location.state?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, user, navigate, location.state]);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -157,7 +165,7 @@ export default function Login() {
       });
 
       if (res?.session?.access_token) {
-        login(res.session.access_token, res.user);
+        await login(res.session.access_token, res.user, res.session.refresh_token);
         if (res.session.refresh_token) {
           localStorage.setItem("supabase_refresh_token", res.session.refresh_token);
         }

@@ -11,8 +11,8 @@ import {
   ArrowRight,
   Workflow as WorkflowIcon
 } from 'lucide-react';
-import Card1 from '../components/Card1';
-import Card2 from '../components/Card2';
+import Card1 from '../../components/Card1';
+import Card2 from '../../components/Card2';
 import { TextAnimate } from '@/components/TextAnimation';
 import { Button2 } from '@/components/Button2';
 

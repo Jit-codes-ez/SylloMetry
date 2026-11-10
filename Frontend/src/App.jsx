@@ -9,7 +9,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './routes/ProtectedRoute';
 
 // Code-split pages for production performance and network loading transitions
-const Home = lazy(() => import('./pages/Home'));
+const Home = lazy(() => import('./pages/home/Home'));
 const SignUp = lazy(() => import('./pages/Register'));
 const SignIn = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));

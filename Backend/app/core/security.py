@@ -57,8 +57,20 @@ async def get_current_user(
             res = target_client.table("users").select("*").eq("id", user_id).limit(1).execute()
             if res.data and len(res.data) > 0:
                 profile = res.data[0]
+            elif email:
+                res_email = target_client.table("users").select("*").ilike("email", email).limit(1).execute()
+                if res_email.data and len(res_email.data) > 0:
+                    profile = res_email.data[0]
         except Exception as e:
             logger.warning("Error fetching profile from public.users for %s: %s", user_id, str(e))
+
+        if not profile:
+            logger.warning("User %s (%s) has token but does not exist in public.users", user_id, email)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account does not exist in SylloMetry database. Please sign up first.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         user_metadata = getattr(auth_user, "user_metadata", {}) or {}
         full_name = (

@@ -15,14 +15,21 @@ export function ProtectedRoute() {
   const { session, user, loading } = useAuth();
   const location = useLocation();
 
+  // Check if valid credentials exist in localStorage to support seamless rehydration
+  const hasLocalAuth = Boolean(
+    typeof window !== "undefined" &&
+    localStorage.getItem("supabase_token") &&
+    localStorage.getItem("syllo_user")
+  );
+
   // Render minimal branded loader matching background while session is loading/rehydrating
-  if (loading) {
+  if (loading || (hasLocalAuth && (!session || !user))) {
     return <PageFallback message="Verifying authentication..." />;
   }
 
-  // If unauthenticated, redirect immediately to /login preserving original destination
-  if (!session && !user) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+  // If unauthenticated or missing verified profile in database, redirect immediately to /signin
+  if ((!session || !user || (!user.id && !user.email)) && !hasLocalAuth) {
+    return <Navigate to="/signin" replace state={{ from: location }} />;
   }
 
   // User is authenticated — render child routes

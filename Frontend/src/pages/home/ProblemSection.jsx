@@ -1,6 +1,6 @@
 import React from 'react';
 import { BookOpen, Building2, GitCompareArrows, ArrowRight } from 'lucide-react';
-import Card1 from '../components/Card1';
+import Card1 from '../../components/Card1';
 import { TextAnimate } from '@/components/TextAnimation';
 
 const CARDS = [

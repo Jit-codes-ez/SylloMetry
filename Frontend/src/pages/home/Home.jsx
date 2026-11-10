@@ -1,10 +1,10 @@
 import React from 'react';
-import Hero from '../sections/Hero';
-import ProblemSection from '../sections/ProblemSection';
-import Workflow from '../sections/Workflow';
-import AIPipeline from '../sections/AIPipeline';
-import WhoIsItFor from '../sections/WhoIsItFor';
-import CTA from '../sections/CTA';
+import Hero from './Hero';
+import ProblemSection from './ProblemSection';
+import Workflow from './Workflow';
+import AIPipeline from './AIPipeline';
+import WhoIsItFor from './WhoIsItFor';
+import CTA from './CTA';
 
 export default function Home() {
   return (

@@ -9,7 +9,7 @@ import {
   Cpu,
   CheckCircle2
 } from 'lucide-react';
-import Card2 from '../components/Card2';
+import Card2 from '../../components/Card2';
 import TextAnimate from '@/components/TextAnimation';
 
 const PIPELINE_BLOCKS = [

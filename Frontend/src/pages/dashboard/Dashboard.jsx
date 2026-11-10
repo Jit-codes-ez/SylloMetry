@@ -20,6 +20,7 @@ import {
 import FileUpload from "@/components/FileUpload";
 import { DashboardSkeleton } from "@/components/ClassicSkeleton";
 import { motion, AnimatePresence } from "motion/react";
+import CardGlare from "@/components/CardGlare";
 
 const CURRICULUM_STORAGE_KEY = "syllometry_curriculum_state";
 
@@ -173,7 +174,7 @@ export default function Dashboard({ isLoading = false }) {
             WELCOME BANNER & QUICK ACTIONS
         ========================================================== */}
         <section id="dashboard-home" className="mb-8">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <CardGlare className="flex flex-col justify-between gap-5 md:flex-row md:items-end border rounded-2xl border-[#850E35]/15 bg-white p-6 sm:p-8 shadow-sm">
             <div>
               <div className="mb-2 flex items-center gap-2">
               </div>
@@ -185,7 +186,7 @@ export default function Dashboard({ isLoading = false }) {
                 and generate a personalized career roadmap.
               </p>
             </div>
-          </div>
+          </CardGlare>
         </section>
 
         {/* =========================================================
@@ -222,11 +223,11 @@ export default function Dashboard({ isLoading = false }) {
 
             {/* File Upload Component */}
             <FileUpload
-              hint="Supported formats: PDF, DOCX, DOC, TXT (Max 15MB)"
+              hint="Supported formats: PDF, DOCX, DOC, TXT (Max 5MB)"
               accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
               allowsMultiple={false}
               maxFiles={1}
-              maxSize={15 * 1024 * 1024}
+              maxSize={5 * 1024 * 1024}
               initialFiles={uploadedCurriculum}
               onFilesChange={(files) => {
                 setUploadedCurriculum(files);

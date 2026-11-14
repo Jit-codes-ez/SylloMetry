@@ -6,6 +6,7 @@ from supabase_auth.errors import AuthApiError
 
 from app.core.supabase import get_supabase_admin_client, get_supabase_client
 from app.schemas.signup import SafeUser
+from app.schemas.admin import SafeAdmin
 
 logger = logging.getLogger("app.core.security")
 
@@ -134,4 +135,81 @@ async def get_optional_user(
         return await get_current_user(credentials)
     except HTTPException:
         return None
+
+
+async def get_current_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> SafeAdmin:
+    """
+    FastAPI dependency for authenticating requests using an Admin token.
+    1. Extracts Bearer token from header.
+    2. Validates against Supabase Auth.
+    3. Confirms user email is registered in public.admin.
+    4. Raises 401 or 403 if unauthorized.
+    """
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authentication token is missing.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials.strip()
+    client = get_supabase_client()
+    admin_client = get_supabase_admin_client()
+    target_client = admin_client or client
+
+    try:
+        user_response = client.auth.get_user(token)
+        auth_user = getattr(user_response, "user", None) or user_response
+
+        if not auth_user or not getattr(auth_user, "id", None):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired admin authentication session.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        email = str(getattr(auth_user, "email", "")).strip().lower()
+
+        # Query public.admin table
+        admin_rec = None
+        try:
+            res = target_client.table("admin").select("*").ilike("email", email).limit(1).execute()
+            if res.data and len(res.data) > 0:
+                admin_rec = res.data[0]
+        except Exception as e:
+            logger.warning("Error querying public.admin for %s: %s", email, str(e))
+
+        if not admin_rec:
+            logger.warning("Forbidden admin attempt by non-admin: %s", email)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Administrator privileges required.",
+            )
+
+        return SafeAdmin(
+            id=admin_rec["id"],
+            email=admin_rec["email"],
+            role="admin",
+            full_name=email.split("@")[0].title(),
+        )
+
+    except AuthApiError as e:
+        logger.warning("Admin JWT verification failed: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin session has expired or is invalid. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Unexpected error in get_current_admin: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authentication failed.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 

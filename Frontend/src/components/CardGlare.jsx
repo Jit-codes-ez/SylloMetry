@@ -61,17 +61,22 @@ export function CardGlare({
   icon: Icon,
   borderWidth = 2.5,
   duration = 7,
-  shineColor = DEFAULT_SHINE_COLORS,
+  shineColor,
   className = '',
   innerClassName = '',
   interactive = false,
+  theme = 'light',
   style,
   ...props
 }) {
+  const isDark = theme === 'dark';
+  const effectiveShineColors = shineColor || (isDark ? ['#850E35', '#C73659', '#FFA3B5'] : DEFAULT_SHINE_COLORS);
+
   return (
     <div
       className={cn(
-        'relative rounded-2xl overflow-hidden transition-all duration-300 shadow-md text-[#850E35]',
+        'relative rounded-2xl overflow-hidden transition-all duration-300 shadow-md',
+        isDark ? 'text-[#FFF5E4]' : 'text-[#850E35]',
         interactive && 'hover:shadow-xl card-interactive',
         className
       )}
@@ -86,19 +91,23 @@ export function CardGlare({
       <ShineBorder
         borderWidth={borderWidth}
         duration={duration}
-        shineColor={shineColor}
+        shineColor={effectiveShineColors}
       />
 
       {/* Subtle diagonal surface glare reflex */}
       <div
-        className="pointer-events-none absolute inset-0 z-20 opacity-20 bg-gradient-to-tr from-transparent via-white/25 to-transparent"
+        className={cn(
+          "pointer-events-none absolute inset-0 z-20 opacity-20 bg-gradient-to-tr from-transparent via-white/20 to-transparent",
+          isDark && "opacity-10 via-[#FFA3B5]/15"
+        )}
         aria-hidden="true"
       />
 
       {/* Inner Card Content & Surface */}
       <div
         className={cn(
-          'relative z-10 w-full h-full rounded-[14px] bg-[#FFFBF1] overflow-hidden p-6 sm:p-7',
+          'relative z-10 w-full h-full rounded-[14px] overflow-hidden p-6 sm:p-7',
+          isDark ? 'bg-[#230614] text-[#FFF5E4]' : 'bg-[#FFFBF1] text-[#850E35]',
           innerClassName
         )}
       >

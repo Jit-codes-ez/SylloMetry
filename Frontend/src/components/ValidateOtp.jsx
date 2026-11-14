@@ -8,12 +8,13 @@ import { Button1 } from '@/components/Button1';
 /**
  * Individual Digit Slot for OTP Input
  */
-function OtpSlot({ slot: propSlot, isFocused: propFocused, index, isError = false, size = 'md' }) {
+function OtpSlot({ slot: propSlot, isFocused: propFocused, index, isError = false, size = 'md', theme = 'light' }) {
   const context = React.useContext(OTPInputContext) || {};
   const slot = propSlot !== undefined ? propSlot : (context.slots && index !== undefined ? context.slots[index] : null);
   const isFocused = propFocused !== undefined ? propFocused : Boolean(context.isFocused);
   const isActive = Boolean(isFocused && slot?.isActive);
   const hasChar = Boolean(slot?.char);
+  const isDark = theme === 'dark';
 
   const sizeClasses =
     {
@@ -25,21 +26,29 @@ function OtpSlot({ slot: propSlot, isFocused: propFocused, index, isError = fals
   return (
     <div
       className={cn(
-        'relative flex shrink-0 items-center justify-center border-2 bg-white text-center font-bold transition-all duration-200 select-none shadow-2xs',
+        'relative flex shrink-0 items-center justify-center border-2 text-center font-bold transition-all duration-200 select-none shadow-2xs',
         sizeClasses,
-        isError
-          ? 'border-red-400 text-red-600 ring-4 ring-red-400/20'
+        isDark
+          ? isError
+            ? 'border-red-400 text-red-400 bg-[#280613] ring-4 ring-red-400/20'
+            : isActive
+            ? 'border-[#C73659] text-[#FFF5E4] bg-[#360819] ring-4 ring-[#C73659]/30 shadow-md -translate-y-0.5'
+            : hasChar
+            ? 'border-[#850E35]/65 text-[#FFF5E4] bg-[#2A0614] shadow-xs'
+            : 'border-[#850E35]/35 text-[#FFF5E4]/40 bg-[#1F040E] hover:border-[#850E35]/60'
+          : isError
+          ? 'border-red-400 text-red-600 bg-white ring-4 ring-red-400/20'
           : isActive
-          ? 'border-[#850E35] text-[#850E35] ring-4 ring-[#850E35]/15 shadow-md -translate-y-0.5'
+          ? 'border-[#850E35] text-[#850E35] bg-white ring-4 ring-[#850E35]/15 shadow-md -translate-y-0.5'
           : hasChar
           ? 'border-[#850E35]/45 text-[#850E35] bg-[#FFFBF1]/60 shadow-xs'
-          : 'border-[#850E35]/20 text-[#850E35]/40 hover:border-[#850E35]/40'
+          : 'border-[#850E35]/20 text-[#850E35]/40 bg-white hover:border-[#850E35]/40'
       )}
     >
       {slot?.char ? (
         <span className="transition-transform duration-150 transform scale-100">{slot.char}</span>
       ) : isActive ? (
-        <span className="h-5 w-0.5 rounded-full bg-[#850E35] animate-pulse" />
+        <span className={cn("h-5 w-0.5 rounded-full animate-pulse", isDark ? "bg-[#C73659]" : "bg-[#850E35]")} />
       ) : null}
     </div>
   );
@@ -54,6 +63,7 @@ function OtpSlot({ slot: propSlot, isFocused: propFocused, index, isError = fals
  */
 export function ValidateOtp({
   variant = 'card',
+  theme = 'light',
   email = 'student@university.edu',
   length = 6,
   onVerify,
@@ -154,30 +164,37 @@ export function ValidateOtp({
   // INLINE VARIANT (Embedded into form after email with Submit button beside it)
   // ─────────────────────────────────────────────────────────────────────────────
   if (variant === 'inline') {
+    const isDark = theme === 'dark';
+
     return (
       <div
         className={cn(
-          'w-full rounded-2xl border border-[#850E35]/15 bg-[#FFFBF1]/80 p-4 sm:p-5 space-y-3.5 shadow-2xs transition-all duration-200',
+          'w-full rounded-2xl p-4 sm:p-5 space-y-3.5 transition-all duration-200',
+          isDark
+            ? 'border border-[#850E35]/40 bg-[#240410]/95 shadow-xl backdrop-blur-md text-[#FFF5E4]'
+            : 'border border-[#850E35]/15 bg-[#FFFBF1]/80 shadow-2xs text-[#850E35]',
           className
         )}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-[#850E35] shrink-0" />
-            <span className="text-xs font-bold text-[#850E35]">Enter Verification Code</span>
+            <ShieldCheck size={16} className={isDark ? "text-[#E36A6A] shrink-0" : "text-[#850E35] shrink-0"} />
+            <span className={cn("text-xs font-bold", isDark ? "text-[#FFF5E4]" : "text-[#850E35]")}>
+              Enter Verification Code
+            </span>
           </div>
-          <span className="text-[11px] font-medium text-[#850E35]/60 truncate max-w-[200px]">
-            Sent to <strong className="text-[#850E35]">{email}</strong>
+          <span className={cn("text-[11px] font-medium truncate max-w-[200px]", isDark ? "text-[#FFF5E4]/60" : "text-[#850E35]/60")}>
+            Sent to <strong className={isDark ? "text-[#FFD2DF]" : "text-[#850E35]"}>{email}</strong>
           </span>
         </div>
 
         {isSuccess ? (
-          <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-2">
-              <CheckCircle2 size={16} className="shrink-0" />
-              <span className="text-xs font-bold">Email verified successfully!</span>
+              <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+              <span className="text-xs font-bold text-emerald-300">Email verified successfully!</span>
             </div>
-            <span className="text-[10px] text-emerald-600 font-semibold">{successActionText}</span>
+            <span className="text-[10px] text-emerald-300 font-semibold">{successActionText}</span>
           </div>
         ) : (
           <div
@@ -215,12 +232,13 @@ export function ValidateOtp({
                           isFocused={isFocused}
                           index={idx}
                           size="md"
+                          theme={theme}
                           isError={Boolean(error)}
                         />
                       ))}
 
                       {length > 4 && (
-                        <div className="flex items-center justify-center px-1 text-[#850E35]/35 font-bold text-base select-none shrink-0">
+                        <div className={cn("flex items-center justify-center px-1 font-bold text-base select-none shrink-0", isDark ? "text-[#C73659]/60" : "text-[#850E35]/35")}>
                           -
                         </div>
                       )}
@@ -232,6 +250,7 @@ export function ValidateOtp({
                           isFocused={isFocused}
                           index={idx + half}
                           size="md"
+                          theme={theme}
                           isError={Boolean(error)}
                         />
                       ))}
@@ -243,7 +262,7 @@ export function ValidateOtp({
 
             {/* Error Message */}
             {error && (
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 bg-red-50 py-2 px-3 rounded-xl border border-red-200 animate-in fade-in duration-150">
+              <div className={cn("flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-xl border animate-in fade-in duration-150", isDark ? "text-red-300 bg-red-950/50 border-red-800/60" : "text-red-600 bg-red-50 border-red-200")}>
                 <AlertCircle size={14} className="shrink-0" />
                 <span>{error}</span>
               </div>
@@ -279,14 +298,14 @@ export function ValidateOtp({
             </AnimatePresence>
 
             {/* Resend footer */}
-            <div className="flex items-center justify-between text-[11px] text-[#850E35]/60 pt-2 border-t border-[#850E35]/10">
+            <div className={cn("flex items-center justify-between text-[11px] pt-2 border-t", isDark ? "text-[#FFF5E4]/60 border-[#850E35]/25" : "text-[#850E35]/60 border-[#850E35]/10")}>
               <span>Didn't receive code?</span>
               {canResend ? (
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={isResending}
-                  className="font-bold text-[#850E35] hover:text-[#E36A6A] transition-colors inline-flex items-center gap-1 cursor-pointer"
+                  className={cn("font-bold transition-colors inline-flex items-center gap-1 cursor-pointer", isDark ? "text-[#E36A6A] hover:text-[#FFA3B5]" : "text-[#850E35] hover:text-[#E36A6A]")}
                 >
                   {isResending ? (
                     <>
@@ -301,7 +320,7 @@ export function ValidateOtp({
                   )}
                 </button>
               ) : (
-                <span className="font-semibold text-[#850E35]/45">
+                <span className={cn("font-semibold", isDark ? "text-[#FFF5E4]/40" : "text-[#850E35]/45")}>
                   Resend in {formatTime(countdown)}
                 </span>
               )}

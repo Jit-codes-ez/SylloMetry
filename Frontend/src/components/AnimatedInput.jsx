@@ -23,7 +23,8 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
     className = '',
     inputClassName = '',
     labelClassName = '',
-    labelBg = 'bg-white',
+    labelBg,
+    theme = 'light',
     icon,
     endElement,
     error,
@@ -33,6 +34,8 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
   },
   ref
 ) {
+  const isDark = theme === 'dark';
+  const effectiveLabelBg = labelBg || (isDark ? 'bg-[#230614]' : 'bg-white');
   const [internalValue, setInternalValue] = useState(defaultValue);
   const isControlled = value !== undefined;
   const val = isControlled ? value : internalValue;
@@ -53,7 +56,10 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
         {icon ? (
           <span
             aria-hidden="true"
-            className="absolute top-1/2 left-3.5 -translate-y-1/2 text-[#850E35]/50 pointer-events-none z-10 flex items-center justify-center transition-colors"
+            className={cn(
+              "absolute top-1/2 left-3.5 -translate-y-1/2 pointer-events-none z-10 flex items-center justify-center transition-colors",
+              isDark ? "text-[#E36A6A]" : "text-[#850E35]/50"
+            )}
           >
             {icon}
           </span>
@@ -64,10 +70,20 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
           aria-label={label}
           name={name}
           className={cn(
-            'peer w-full rounded-xl border bg-white px-3.5 py-3 text-sm text-[#850E35] outline-none transition-all duration-200 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-[#850E35]/35',
-            error
-              ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
-              : 'border-[#850E35]/20 focus:border-[#850E35] focus:ring-[#850E35]/15',
+            'peer w-full rounded-xl border px-3.5 py-3 text-sm outline-none transition-all duration-200 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed',
+            isDark
+              ? cn(
+                  'bg-[#18030C] text-[#FFF5E4] placeholder:text-[#A8576C]',
+                  error
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-950/40'
+                    : 'border-[#850E35]/50 focus:border-[#C73659] focus:ring-[#C73659]/20'
+                )
+              : cn(
+                  'bg-white text-[#850E35] placeholder:text-[#850E35]/35',
+                  error
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                    : 'border-[#850E35]/20 focus:border-[#850E35] focus:ring-[#850E35]/15'
+                ),
             icon ? 'pl-10' : '',
             endElement ? 'pr-11' : '',
             inputClassName
@@ -114,7 +130,11 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
             color: error
               ? '#EF4444'
               : isFloating
-              ? '#850E35'
+              ? isDark
+                ? '#FFA3B5'
+                : '#850E35'
+              : isDark
+              ? 'rgba(255, 163, 181, 0.75)'
               : 'rgba(133, 14, 53, 0.6)',
           }}
           transition={{
@@ -124,7 +144,7 @@ export const AnimatedInput = forwardRef(function AnimatedInput(
           }}
           className={cn(
             'pointer-events-none absolute top-0 left-3.5 origin-left rounded px-1 text-xs font-semibold select-none',
-            labelBg,
+            effectiveLabelBg,
             labelClassName
           )}
           htmlFor={inputId}

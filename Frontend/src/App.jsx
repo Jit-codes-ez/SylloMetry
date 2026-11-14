@@ -1,12 +1,15 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Reveal from './components/ScrollAnimation';
 import { PageFallback } from './components/PageLoader';
 import { DashboardSkeleton } from './components/ClassicSkeleton';
 import { AuthProvider } from './context/AuthContext';
+import { AdminAuthProvider } from './context/AdminAuthContext';
 import ProtectedRoute from './routes/ProtectedRoute';
+import AdminProtectedRoute from './routes/AdminProtectedRoute';
+import { cn } from './lib/utils';
 
 // Code-split pages for production performance and network loading transitions
 const Home = lazy(() => import('./pages/home/Home'));
@@ -21,6 +24,8 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -34,11 +39,19 @@ function ScrollToTop() {
 
 function AppContent() {
   const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
-    <div className="min-h-screen bg-[#FFFBF1] text-[#850E35] flex flex-col selection:bg-[#E36A6A]/25 selection:text-[#850E35] overflow-x-hidden">
+    <div
+      className={cn(
+        "min-h-screen flex flex-col overflow-x-hidden",
+        isAdminRoute
+          ? "bg-gradient-to-b from-[#1C040E] via-[#140209] to-[#0E0106] text-[#FFF5E4] selection:bg-[#C73659]/30 selection:text-white"
+          : "bg-[#FFFBF1] text-[#850E35] selection:bg-[#E36A6A]/25 selection:text-[#850E35]"
+      )}
+    >
       <ScrollToTop />
-      <Navbar />
+      {!isAdminRoute && <Navbar />}
       <Reveal key={location.pathname} className="flex-1 flex flex-col">
         <main className="flex-1">
           <Routes>
@@ -99,6 +112,33 @@ function AppContent() {
                 </Suspense>
               }
             />
+
+            {/* Dedicated Administration Routes */}
+            <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
+            <Route
+              path="/admin/login"
+              element={
+                <Suspense fallback={<PageFallback message="Loading Admin Portal..." />}>
+                  <AdminLogin />
+                </Suspense>
+              }
+            />
+            <Route element={<AdminProtectedRoute />}>
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="min-h-screen bg-[#120106] pt-24 pb-16 flex items-center justify-center">
+                        <DashboardSkeleton theme="dark" shimmer={true} />
+                      </div>
+                    }
+                  >
+                    <AdminDashboard />
+                  </Suspense>
+                }
+              />
+            </Route>
 
             {/* Protected Private Routes - Strictly requires authenticated Supabase session */}
             <Route element={<ProtectedRoute />}>
@@ -196,7 +236,7 @@ function AppContent() {
           </Routes>
         </main>
       </Reveal>
-      <Footer />
+      {!isAdminRoute && <Footer />}
     </div>
   );
 }
@@ -205,7 +245,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppContent />
+        <AdminAuthProvider>
+          <AppContent />
+        </AdminAuthProvider>
       </AuthProvider>
     </BrowserRouter>
   );

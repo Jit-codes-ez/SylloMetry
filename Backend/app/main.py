@@ -8,6 +8,7 @@ from supabase_auth.errors import AuthApiError
 from app.core.config import settings
 from app.routes.signup import router as signup_router
 from app.routes.login import router as login_router
+from app.routes.admin import router as admin_router
 
 # Configure structured logging
 logging.basicConfig(
@@ -81,4 +82,5 @@ def health_check():
 # Include Authentication Routers
 app.include_router(signup_router)
 app.include_router(login_router)
+app.include_router(admin_router)
 

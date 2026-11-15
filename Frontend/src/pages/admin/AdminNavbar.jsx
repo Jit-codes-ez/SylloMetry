@@ -1,14 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, LogOut, ArrowUpRight, ArrowLeft, User, LayoutDashboard, ChevronDown } from 'lucide-react';
+import { ShieldCheck, LogOut, ArrowUpRight, ArrowLeft, User, LayoutDashboard, ChevronDown, UserPlus, KeyRound } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { Button2 } from '@/components/Button2';
 import { cn } from '@/lib/utils';
+import AddAdminModal from './AddAdminModal';
+import ChangePasswordModal from './ChangePasswordModal';
 
 export default function AdminNavbar() {
   const { admin, logoutAdmin } = useAdminAuth();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   // Close dropdown on outside click
@@ -82,36 +86,53 @@ export default function AdminNavbar() {
 
             {/* Dropdown Menu */}
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-[#850E35]/50 bg-[#200512]/98 p-2 text-white shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 z-50">
-                <div className="px-3 py-2.5 border-b border-[#850E35]/35 mb-1">
-                  <div className="flex items-center gap-2 mb-1">
+              <div
+                style={{ backgroundColor: '#1C040E' }}
+                className="absolute right-0 mt-2 w-64 rounded-2xl border border-[#850E35]/60 bg-[#1C040E] p-2 text-white shadow-[0_25px_60px_rgba(0,0,0,0.95)] ring-1 ring-[#850E35]/40 animate-in fade-in zoom-in-95 duration-150 z-50 overflow-hidden"
+              >
+                <div
+                  style={{ backgroundColor: '#240614' }}
+                  className="px-3.5 py-3 border-b border-[#850E35]/40 mb-1.5 bg-[#240614] rounded-xl"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
                       Authorized Admin
                     </span>
                   </div>
-                  <p className="text-xs font-bold text-white truncate">{adminDisplayName}</p>
-                  <p className="text-[11px] text-[#FFBAC7]/70 truncate font-mono">{adminEmail}</p>
+                  <p className="text-xs font-extrabold text-white truncate">{adminDisplayName}</p>
+                  <p className="text-[11px] text-[#FFBAC7] truncate font-mono mt-0.5">{adminEmail}</p>
                 </div>
 
-                <div className="space-y-0.5">
-                  <a
-                    href="/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex sm:hidden items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-[#FFBAC7] hover:text-white hover:bg-[#340718] transition-colors"
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      setIsAddAdminModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-white hover:text-white hover:bg-[#340718] transition-colors text-left cursor-pointer"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <User size={15} className="text-[#E36A6A]" />
-                      <span>User Portal</span>
-                    </div>
-                    <ArrowUpRight size={13} className="text-[#FFBAC7]/60" />
-                  </a>
+                    <UserPlus size={15} className="text-[#E36A6A]" />
+                    <span>Add Admin</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      setIsChangePasswordModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-white hover:text-white hover:bg-[#340718] transition-colors text-left cursor-pointer"
+                  >
+                    <KeyRound size={15} className="text-[#E36A6A]" />
+                    <span>Change Password</span>
+                  </button>
 
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950/70 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950 transition-colors text-left cursor-pointer"
                   >
                     <LogOut size={15} className="text-rose-400" />
                     <span>Sign Out</span>
@@ -122,6 +143,18 @@ export default function AdminNavbar() {
           </div>
         </div>
       </div>
+
+      {/* Add Administrator Modal */}
+      <AddAdminModal
+        isOpen={isAddAdminModalOpen}
+        onClose={() => setIsAddAdminModalOpen(false)}
+      />
+
+      {/* Change Administrator Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+      />
     </header>
   );
 }

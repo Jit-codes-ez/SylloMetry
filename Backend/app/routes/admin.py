@@ -13,6 +13,10 @@ from app.schemas.admin import (
     AdminSendOtpResponse,
     AdminVerifyOtpRequest,
     AdminVerifyOtpResponse,
+    CreateAdminRequest,
+    CreateAdminResponse,
+    AdminChangePasswordRequest,
+    AdminChangePasswordResponse,
     SafeAdmin,
 )
 from app.services.admin_service import AdminService
@@ -145,4 +149,44 @@ async def get_admin_documents(
     service: AdminService = Depends(get_admin_service),
 ) -> AdminDocumentListResponse:
     return service.get_documents_list(current_admin)
+
+
+# ==============================================================================
+# Endpoint 8: Add New Admin Account
+# POST /api/admin/create
+# ==============================================================================
+@router.post(
+    "/create",
+    response_model=CreateAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create New Administrator",
+    description="Allows an authenticated administrator to register a new admin with email and password.",
+)
+async def create_new_admin(
+    payload: CreateAdminRequest,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> CreateAdminResponse:
+    return service.create_admin(payload, current_admin)
+
+
+# ==============================================================================
+# Endpoint 9: Change Administrator Password
+# POST /api/admin/auth/change-password
+# ==============================================================================
+@router.post(
+    "/auth/change-password",
+    response_model=AdminChangePasswordResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Change Admin Password",
+    description="Updates password for the currently authenticated administrator after verifying current password.",
+)
+async def change_admin_password(
+    payload: AdminChangePasswordRequest,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    service: AdminService = Depends(get_admin_service),
+) -> AdminChangePasswordResponse:
+    return service.change_admin_password(payload, current_admin)
+
+
 

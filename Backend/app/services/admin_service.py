@@ -18,6 +18,10 @@ from app.schemas.admin import (
     AdminVerifyOtpResponse,
     AdminDocumentUploadResponse,
     AdminDocumentListResponse,
+    CreateAdminRequest,
+    CreateAdminResponse,
+    AdminChangePasswordRequest,
+    AdminChangePasswordResponse,
     SafeAdmin,
 )
 
@@ -361,4 +365,184 @@ class AdminService:
             success=True,
             documents=_ADMIN_DOCUMENTS,
         )
+
+    def create_admin(self, payload: CreateAdminRequest, current_admin: SafeAdmin) -> CreateAdminResponse:
+        """
+        Creates a new administrator account in public.admin and synchronizes credentials with Supabase Auth.
+        """
+        if not settings.is_supabase_configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials are not configured in Backend/.env.",
+            )
+
+        normalized_email = payload.email.strip().lower()
+
+        # 1. Check if an admin already exists with this email
+        existing = self.get_admin_record_by_email(normalized_email)
+        if existing:
+            logger.warning("Admin creation conflict: %s already exists in public.admin", normalized_email)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"An administrator account with '{normalized_email}' already exists.",
+            )
+
+        # 2. Hash password with bcrypt
+        salt = bcrypt.gensalt(10)
+        hashed_pw = bcrypt.hashpw(payload.password.encode("utf-8"), salt).decode("utf-8")
+
+        # 3. Insert record into public.admin table using service role client
+        target_client = self.admin_client or self.client
+        try:
+            insert_res = (
+                target_client.table("admin")
+                .insert({
+                    "email": normalized_email,
+                    "password": hashed_pw,
+                })
+                .execute()
+            )
+            if not insert_res.data or len(insert_res.data) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to insert administrator in public.admin database table.",
+                )
+            new_admin_row = insert_res.data[0]
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Database error creating admin %s: %s", normalized_email, str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database error registering new admin: {str(e)}",
+            )
+
+        # 4. Synchronize with Supabase Auth users so the new admin can receive OTP codes and login
+        if self.admin_client:
+            try:
+                users = self.admin_client.auth.admin.list_users()
+                matching = [u for u in users if getattr(u, "email", "").lower() == normalized_email]
+                if matching:
+                    self.admin_client.auth.admin.update_user_by_id(
+                        matching[0].id,
+                        {"password": payload.password, "email_confirm": True}
+                    )
+                else:
+                    self.admin_client.auth.admin.create_user({
+                        "email": normalized_email,
+                        "password": payload.password,
+                        "email_confirm": True,
+                    })
+                logger.info("Supabase auth user synchronized for new admin: %s", normalized_email)
+            except Exception as e:
+                logger.warning("Notice syncing new admin with auth.users: %s", str(e))
+
+        new_safe_admin = SafeAdmin(
+            id=new_admin_row.get("id", 0),
+            email=normalized_email,
+            role="admin",
+            full_name=normalized_email.split("@")[0].title(),
+        )
+
+        logger.info("Administrator successfully created: %s by %s", normalized_email, current_admin.email)
+
+        return CreateAdminResponse(
+            success=True,
+            message=f"Administrator account for '{normalized_email}' created successfully.",
+            admin=new_safe_admin,
+        )
+
+    def change_admin_password(
+        self, payload: AdminChangePasswordRequest, current_admin: SafeAdmin
+    ) -> AdminChangePasswordResponse:
+        """
+        Changes password for the currently authenticated administrator in public.admin and Supabase Auth.
+        """
+        if not settings.is_supabase_configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials are not configured in Backend/.env.",
+            )
+
+        normalized_email = current_admin.email.strip().lower()
+
+        # 1. Fetch admin record from public.admin
+        admin_rec = self.get_admin_record_by_email(normalized_email)
+        if not admin_rec:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Administrator account not found in database.",
+            )
+
+        db_password = admin_rec.get("password") or ""
+
+        # 2. Verify current password
+        password_matches = False
+        if db_password.startswith(("$2a$", "$2b$", "$2y$")):
+            try:
+                password_matches = bcrypt.checkpw(
+                    payload.current_password.encode("utf-8"),
+                    db_password.encode("utf-8"),
+                )
+            except Exception as e:
+                logger.error("Error evaluating admin bcrypt password during change: %s", str(e))
+        elif db_password == payload.current_password:
+            password_matches = True
+
+        if not password_matches:
+            logger.warning("Incorrect current password attempt for admin: %s", normalized_email)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The current password you entered is incorrect. Please try again.",
+            )
+
+        # 3. Hash new password with bcrypt
+        salt = bcrypt.gensalt(10)
+        new_hashed_pw = bcrypt.hashpw(payload.new_password.encode("utf-8"), salt).decode("utf-8")
+
+        # 4. Update password in public.admin
+        target_client = self.admin_client or self.client
+        try:
+            update_res = (
+                target_client.table("admin")
+                .update({"password": new_hashed_pw})
+                .eq("id", admin_rec["id"])
+                .execute()
+            )
+            if not update_res.data or len(update_res.data) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update password in database.",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Database error updating admin password for %s: %s", normalized_email, str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database error updating password: {str(e)}",
+            )
+
+        # 5. Synchronize password with Supabase Auth users
+        if self.admin_client:
+            try:
+                users = self.admin_client.auth.admin.list_users()
+                matching = [u for u in users if getattr(u, "email", "").lower() == normalized_email]
+                if matching:
+                    self.admin_client.auth.admin.update_user_by_id(
+                        matching[0].id,
+                        {"password": payload.new_password}
+                    )
+                    logger.info("Supabase auth user password updated for admin: %s", normalized_email)
+            except Exception as e:
+                logger.warning("Notice syncing new password with auth.users: %s", str(e))
+
+        logger.info("Admin password changed successfully for: %s", normalized_email)
+
+        return AdminChangePasswordResponse(
+            success=True,
+            message="Your administrator password has been updated successfully.",
+        )
+
+
 

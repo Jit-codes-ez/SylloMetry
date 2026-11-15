@@ -194,3 +194,72 @@ export async function getAdminDocuments() {
   }
 }
 
+/**
+ * 8. Create a new administrator account.
+ * POST /api/admin/create
+ */
+export async function createAdminAccount({ email, password }) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/create`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to create new administrator.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 9. Change password for current administrator.
+ * POST /api/admin/auth/change-password
+ */
+export async function changeAdminPassword({ current_password, new_password }) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/auth/change-password`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      current_password,
+      new_password,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to change administrator password.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+

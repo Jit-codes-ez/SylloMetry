@@ -61,3 +61,26 @@ class AdminDocumentListResponse(BaseModel):
     success: bool = True
     documents: List[Dict[str, Any]]
 
+
+class CreateAdminRequest(BaseModel):
+    email: EmailStr = Field(..., description="New admin email address")
+    password: str = Field(..., min_length=6, description="New admin account password (min 6 characters)")
+
+
+class CreateAdminResponse(BaseModel):
+    success: bool = True
+    message: str = "Administrator account created successfully."
+    admin: SafeAdmin
+
+
+class AdminChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, description="Current administrator password")
+    new_password: str = Field(..., min_length=6, description="New administrator password (min 6 characters)")
+
+
+class AdminChangePasswordResponse(BaseModel):
+    success: bool = True
+    message: str = "Your password has been changed successfully."
+
+
+

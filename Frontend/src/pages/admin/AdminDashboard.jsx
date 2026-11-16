@@ -9,16 +9,18 @@ import {
   Loader2,
   Trash2,
   Download,
-  ExternalLink,
   RefreshCw,
-  Layers,
   Database,
-  HardDrive,
   Filter,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
   X,
+  BookOpen,
+  Briefcase,
+  Plus,
+  Unlink,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import AdminNavbar from './AdminNavbar';
@@ -31,7 +33,12 @@ import {
   listIndustryFiles,
   getIndustryFileDownloadUrl,
   deleteIndustryFile,
+  getRegisteredIndustryDocuments,
+  unlinkOccupationFromDocument,
 } from '@/lib/adminAuth';
+import RegisterDocumentModal from './RegisterDocumentModal';
+import AddOccupationModal from './AddOccupationModal';
+import TextPreviewModal from './TextPreviewModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -74,10 +81,19 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
+  // Registered Documents State
+  const [registeredDocs, setRegisteredDocs] = useState([]);
+  const [isLoadingRegistered, setIsLoadingRegistered] = useState(true);
+
   // Active Download & Delete Action States
   const [downloadingPath, setDownloadingPath] = useState(null);
   const [fileToDelete, setFileToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Modal Control States
+  const [fileToRegister, setFileToRegister] = useState(null);
+  const [docToAddOccupation, setDocToAddOccupation] = useState(null);
+  const [docToPreviewText, setDocToPreviewText] = useState(null);
 
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
@@ -108,9 +124,28 @@ export default function AdminDashboard() {
     }
   }, [categoryFilter, currentPage]);
 
+  // ---------------------------------------------------------------------------
+  // Load registered documents with linked occupations
+  // ---------------------------------------------------------------------------
+  const fetchRegisteredDocs = useCallback(async () => {
+    setIsLoadingRegistered(true);
+    try {
+      const docs = await getRegisteredIndustryDocuments();
+      setRegisteredDocs(docs || []);
+    } catch (err) {
+      console.error('Failed to load registered documents:', err);
+    } finally {
+      setIsLoadingRegistered(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  useEffect(() => {
+    fetchRegisteredDocs();
+  }, [fetchRegisteredDocs]);
 
   // Clean up progress timer on unmount
   useEffect(() => {
@@ -118,6 +153,9 @@ export default function AdminDashboard() {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     };
   }, []);
+
+  // Set of registered storage paths to identify registration status in stored files table
+  const registeredPathSet = new Set(registeredDocs.map((d) => d.storage_path));
 
   // ---------------------------------------------------------------------------
   // Drag and Drop & File Picker Handlers
@@ -201,7 +239,6 @@ export default function AdminDashboard() {
     setErrorMessage(null);
     setUploadProgress(15);
 
-    // Simulated smooth progress for user feedback while backend streams to Supabase
     progressIntervalRef.current = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 90) {
@@ -222,8 +259,9 @@ export default function AdminDashboard() {
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Refresh list to update totals and table
+      // Refresh both stored files and registered docs
       await fetchFiles();
+      await fetchRegisteredDocs();
     } catch (err) {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       setErrorMessage(err.message || 'Failed to upload document to Supabase storage.');
@@ -241,7 +279,6 @@ export default function AdminDashboard() {
       const signedUrl = await getIndustryFileDownloadUrl(storagePath);
       if (!signedUrl) throw new Error('Signed URL was not returned by server.');
 
-      // Trigger download via temporary invisible anchor
       const link = document.createElement('a');
       link.href = signedUrl;
       link.setAttribute('download', displayName || 'document.pdf');
@@ -269,11 +306,25 @@ export default function AdminDashboard() {
       await deleteIndustryFile(fileToDelete.storage_path);
       setFileToDelete(null);
       await fetchFiles();
+      await fetchRegisteredDocs();
     } catch (err) {
       console.error('Delete error:', err);
       setErrorMessage(err.message || 'Failed to delete file from Supabase storage.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Unlink Occupation Handler
+  // ---------------------------------------------------------------------------
+  const handleUnlinkOccupation = async (documentId, occupationId, relationshipType) => {
+    try {
+      await unlinkOccupationFromDocument(documentId, occupationId, relationshipType);
+      await fetchRegisteredDocs();
+    } catch (err) {
+      console.error('Unlink error:', err);
+      setErrorMessage(err.message || 'Failed to unlink occupation.');
     }
   };
 
@@ -289,11 +340,11 @@ export default function AdminDashboard() {
       {/* Top Fixed Admin Navigation */}
       <AdminNavbar />
 
-      <div className="mx-auto max-w-[1450px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
+      <div className="mx-auto max-w-[1450px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9 space-y-8">
         {/* =========================================================
             1. WELCOME BANNER & REPOSITORY STORAGE METRICS
         ========================================================== */}
-        <section id="admin-welcome" className="mb-8">
+        <section id="admin-welcome">
           <CardGlare
             theme="dark"
             innerClassName="bg-[#240614]/95 p-6 sm:p-8 rounded-3xl flex flex-col justify-between gap-6 md:flex-row md:items-end border border-[#850E35]/40 shadow-xl"
@@ -305,17 +356,26 @@ export default function AdminDashboard() {
               </h1>
 
               <p className="mt-2 max-w-2xl text-xs sm:text-sm leading-relaxed text-[#FFBAC7]">
-                Secure private repository for original industry curriculum datasets, qualification files, and competency benchmarks.
+                Repository for industry curriculum datasets, qualification files, and competency benchmarks linked to national occupational standards.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <div className="px-4 py-2.5 rounded-xl bg-[#18030C] border border-[#850E35]/50 text-right min-w-[110px]">
                 <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                  Stored Documents
+                  Stored Files
                 </p>
                 <p className="text-xl text-center font-extrabold text-white">
                   {totalCount}
+                </p>
+              </div>
+
+              <div className="px-4 py-2.5 rounded-xl bg-[#18030C] border border-[#850E35]/50 text-center min-w-[120px]">
+                <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
+                  Registered
+                </p>
+                <p className="text-xl text-center font-extrabold text-white">
+                  {registeredDocs.length}
                 </p>
               </div>
 
@@ -331,10 +391,30 @@ export default function AdminDashboard() {
           </CardGlare>
         </section>
 
+        {/* Global Error Notification */}
+        {errorMessage && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/40 bg-rose-950/80 p-4 text-xs text-rose-200 animate-in fade-in duration-200"
+          >
+            <div className="flex items-center gap-2.5">
+              <AlertCircle size={17} className="text-rose-400 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="text-rose-300 hover:text-white text-xs font-bold underline cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* =========================================================
-            2. MAIN FEATURE: PDF UPLOAD & CATEGORY CLASSIFICATION
+            2. MAIN FEATURE: PDF UPLOAD INTERFACE
         ========================================================== */}
-        <section id="admin-pdf-upload" className="mb-8">
+        <section id="admin-pdf-upload">
           <div className="rounded-3xl border border-[#850E35]/40 bg-[#240614]/95 p-6 sm:p-8 shadow-xl backdrop-blur-md">
             {/* Header */}
             <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -347,31 +427,11 @@ export default function AdminDashboard() {
                     Upload Industry PDF Document
                   </h2>
                   <p className="mt-1 text-xs text-[#FFBAC7] max-w-2xl leading-relaxed">
-                    Store qualification files, job descriptions, and curricula in the private <code>Industry_Docs</code> bucket. Documents are strictly preserved in their original form for extraction, skill mapping, and prompt reprocessing.
+                    Store qualification files, job descriptions, and curricula in the private bucket. Documents are strictly preserved in their original form for extraction, skill mapping, and prompt reprocessing.
                   </p>
                 </div>
               </div>
             </div>
-
-            {/* Error Notification */}
-            {errorMessage && (
-              <div
-                role="alert"
-                className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-950/70 p-3.5 text-xs text-rose-200 animate-in fade-in duration-200"
-              >
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={16} className="text-rose-400 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setErrorMessage(null)}
-                  className="text-rose-300 hover:text-white text-xs font-bold underline cursor-pointer"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
 
             {/* Category Selector Dropdown */}
             <div className="mb-5">
@@ -451,7 +511,6 @@ export default function AdminDashboard() {
               /* Selected File Card with Progress */
               <div className="space-y-4">
                 <div className="relative overflow-hidden rounded-2xl border border-[#850E35]/50 bg-[#18030C] p-4 sm:p-5 shadow-md">
-                  {/* Progress background fill */}
                   <div
                     className="absolute inset-y-0 left-0 bg-[#850E35]/20 transition-all duration-150 ease-out pointer-events-none rounded-xl"
                     style={{ width: `${uploadProgress}%` }}
@@ -498,7 +557,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
                   {isUploading && (
                     <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#100108]">
                       <div
@@ -509,12 +567,11 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                {/* Upload Action Bar */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 border-t border-[#850E35]/30 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2 text-xs text-[#FFBAC7]">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span>
-                      Ready to store in <code>Industry_Docs/{selectedCategory}/</code> ({getReadableFileSize(selectedFile.size)})
+                      Ready to store in {selectedCategory} ({getReadableFileSize(selectedFile.size)})
                     </span>
                   </div>
 
@@ -562,7 +619,7 @@ export default function AdminDashboard() {
               initial={{ opacity: 0, y: 10, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.98 }}
-              className="mb-8 rounded-3xl border border-emerald-500/40 bg-emerald-950/60 p-6 sm:p-7 shadow-lg backdrop-blur-md"
+              className="rounded-3xl border border-emerald-500/40 bg-emerald-950/60 p-6 sm:p-7 shadow-lg backdrop-blur-md"
             >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-start gap-3.5">
@@ -574,12 +631,23 @@ export default function AdminDashboard() {
                       Document Successfully Stored in Private Bucket!
                     </h3>
                     <p className="mt-1 text-xs text-emerald-300 leading-relaxed max-w-xl">
-                      <strong>{uploadSuccessDoc.display_name}</strong> ({getReadableFileSize(uploadSuccessDoc.size_bytes)}) has been safely stored in <code>{uploadSuccessDoc.storage_path}</code>. Overwrite protection ensured a unique object key.
+                      <strong>{uploadSuccessDoc.display_name}</strong> ({getReadableFileSize(uploadSuccessDoc.size_bytes)}) has been safely stored in <code>{uploadSuccessDoc.storage_path}</code>. You can now register it in the database below.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFileToRegister(uploadSuccessDoc);
+                      setUploadSuccessDoc(null);
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/40 transition-colors cursor-pointer shadow-md"
+                  >
+                    Register Document Now
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setUploadSuccessDoc(null)}
@@ -594,7 +662,195 @@ export default function AdminDashboard() {
         </AnimatePresence>
 
         {/* =========================================================
-            4. STORED FILES LIST WITH FILTERING & ACTIONS
+            4. REGISTERED INDUSTRY DOCUMENTS (DATABASE & OCCUPATIONS)
+        ========================================================== */}
+        <section id="admin-registered-documents">
+          <div className="rounded-3xl border border-[#850E35]/40 bg-[#240614]/95 p-6 sm:p-8 shadow-xl backdrop-blur-md">
+            {/* Header Toolbar */}
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2 drop-shadow-sm">
+                  <Database size={18} className="text-[#C73659]" />
+                  <span>Registered Industry Documents</span>
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
+                    {registeredDocs.length} Active
+                  </span>
+                </h3>
+                <p className="text-xs text-[#FFBAC7] mt-0.5">
+                  Curriculum benchmarks registered and linked to National Occupational Standards (NCO).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchRegisteredDocs}
+                disabled={isLoadingRegistered}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18030C] border border-[#850E35]/40 text-xs font-semibold text-[#FFA8B8] hover:text-white hover:bg-[#290516] transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+                title="Refresh registered documents"
+              >
+                <RefreshCw size={13} className={cn(isLoadingRegistered && 'animate-spin')} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* Registered Documents Table / List */}
+            {isLoadingRegistered ? (
+              <div className="rounded-2xl border border-dashed border-[#850E35]/35 bg-[#18030C]/50 p-12 text-center space-y-3">
+                <Loader2 size={28} className="mx-auto text-[#C73659] animate-spin" />
+                <p className="text-xs text-[#FFBAC7]">Loading registered documents from database...</p>
+              </div>
+            ) : registeredDocs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#850E35]/35 bg-[#18030C]/50 p-10 text-center space-y-2">
+                <FileText size={32} className="mx-auto text-[#850E35]/70" />
+                <p className="text-sm font-semibold text-white">No registered industry documents yet</p>
+                <p className="text-xs text-[#FFBAC7]/70 max-w-md mx-auto">
+                  Click the <strong>Register</strong> button on any file in the Stored Files list below to link it with occupational benchmarks.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {registeredDocs.map((doc) => {
+                  const typeClass = CATEGORY_STYLES[doc.document_type] || 'bg-[#3A1024] text-[#FFA8B8] border-[#850E35]/60';
+
+                  return (
+                    <div
+                      key={doc.document_id}
+                      className="rounded-2xl border border-[#850E35]/40 bg-[#18030C] p-5 sm:p-6 hover:border-[#C73659]/70 transition-all space-y-4"
+                    >
+                      {/* Document Meta Row */}
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="space-y-1.5 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span className="px-2 py-0.5 rounded-md bg-[#2D0616] border border-[#850E35]/60 text-[10px] font-mono font-bold text-white">
+                              ID: #{doc.document_id}
+                            </span>
+
+                            <h4 className="text-sm sm:text-base font-bold text-white truncate max-w-xl">
+                              {doc.document_name}
+                            </h4>
+
+                            <span
+                              className={cn(
+                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-wider uppercase whitespace-nowrap',
+                                typeClass
+                              )}
+                            >
+                              {CATEGORY_LABELS[doc.document_type] || doc.document_type}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-[#FFBAC7]/70">
+                            {doc.issuing_organization && (
+                              <span>
+                                Org: <strong className="text-white">{doc.issuing_organization}</strong>
+                              </span>
+                            )}
+                            {doc.published_date && (
+                              <span>• Published: <strong className="text-white">{doc.published_date}</strong></span>
+                            )}
+                            {doc.source_url && (
+                              <a
+                                href={doc.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[#FFA8B8] hover:text-white underline underline-offset-2"
+                              >
+                                <span>Source</span>
+                                <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+
+                          <p className="text-[11px] font-mono text-[#FFBAC7]/50 truncate max-w-2xl">
+                            Storage: {doc.storage_path}
+                          </p>
+                        </div>
+
+                        {/* Document Actions */}
+                        <div className="flex items-center gap-2 shrink-0 self-start">
+                          {/* Preview Text Button */}
+                          <button
+                            type="button"
+                            onClick={() => setDocToPreviewText(doc)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#850E35] to-[#B8194E] hover:brightness-110 text-white text-xs font-bold shadow-md shadow-[#850E35]/30 transition-all cursor-pointer"
+                            title="Extract and inspect text"
+                          >
+                            <BookOpen size={14} />
+                            <span>Preview Text</span>
+                          </button>
+
+                          {/* Link Occupation Button */}
+                          <button
+                            type="button"
+                            onClick={() => setDocToAddOccupation(doc)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#290516] hover:bg-[#36081B] border border-[#850E35]/60 text-xs font-semibold text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
+                            title="Link an occupation standard to this document"
+                          >
+                            <Plus size={14} />
+                            <span>Link Occupation</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Linked Occupations Area */}
+                      <div className="pt-3 border-t border-[#850E35]/30">
+                        <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-[#FFA8B8]">
+                          <Briefcase size={13} className="text-[#E36A6A]" />
+                          <span>Linked Occupations ({doc.occupations?.length || 0})</span>
+                        </div>
+
+                        {(!doc.occupations || doc.occupations.length === 0) ? (
+                          <p className="text-xs text-[#FFBAC7]/60 italic">
+                            No occupations linked yet. Click "Link Occupation" to align this document with NCO-2015 or target roles.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {doc.occupations.map((occ) => {
+                              const isTargetRole = occ.relationship_type === 'target_role';
+                              return (
+                                <div
+                                  key={occ.id}
+                                  className={cn(
+                                    'inline-flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-xl text-xs border transition-colors group',
+                                    isTargetRole
+                                      ? 'bg-purple-950/60 border-purple-500/40 text-purple-200'
+                                      : 'bg-indigo-950/60 border-indigo-500/40 text-indigo-200'
+                                  )}
+                                >
+                                  <div className="space-x-1.5 font-medium">
+                                    <span className="font-bold text-white">
+                                      {occ.classification_code}
+                                    </span>
+                                    <span>{occ.occupation_name}</span>
+                                    <span className="text-[10px] uppercase font-bold opacity-75">
+                                      ({occ.relationship_type.replace('_', ' ')})
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnlinkOccupation(doc.document_id, occ.occupation_id, occ.relationship_type)}
+                                    className="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-900/60 transition-colors cursor-pointer"
+                                    title="Unlink this occupation from document"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* =========================================================
+            5. STORED FILES LIST WITH REGISTRATION STATUS & ACTIONS
         ========================================================== */}
         <section id="admin-stored-files">
           <div className="rounded-3xl border border-[#850E35]/40 bg-[#240614]/95 p-6 sm:p-8 shadow-xl backdrop-blur-md">
@@ -606,7 +862,7 @@ export default function AdminDashboard() {
                   <span>Stored Industry PDF Files</span>
                 </h3>
                 <p className="text-xs text-[#FFBAC7] mt-0.5">
-                  Review original curriculum datasets stored in Supabase private bucket.
+                  Review original curriculum PDFs. Register files to link them with occupational benchmarks.
                 </p>
               </div>
 
@@ -646,7 +902,7 @@ export default function AdminDashboard() {
                       {cat.label}
                     </button>
                   ))}
-                </div>
+
 
                 {/* Refresh Button */}
                 <button
@@ -658,6 +914,7 @@ export default function AdminDashboard() {
                 >
                   <RefreshCw size={15} className={cn(isLoadingFiles && 'animate-spin')} />
                 </button>
+                </div>
               </div>
             </div>
 
@@ -684,6 +941,7 @@ export default function AdminDashboard() {
                     <tr className="border-b border-[#850E35]/30 text-[#FFA8B8] uppercase tracking-wider text-[10px]">
                       <th className="pb-3 font-bold pl-2">Document Name</th>
                       <th className="pb-3 font-bold">Category</th>
+                      <th className="pb-3 font-bold">Registration</th>
                       <th className="pb-3 font-bold">Size</th>
                       <th className="pb-3 font-bold">Uploaded Date</th>
                       <th className="pb-3 font-bold text-right pr-2">Actions</th>
@@ -692,6 +950,7 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-[#850E35]/20">
                     {files.map((file) => {
                       const isDownloadingThis = downloadingPath === file.storage_path;
+                      const isRegistered = registeredPathSet.has(file.storage_path);
                       const categoryClass = CATEGORY_STYLES[file.category] || 'bg-[#3A1024] text-[#FFA8B8] border-[#850E35]/60';
                       const formattedDate = file.upload_date
                         ? new Date(file.upload_date).toLocaleDateString(undefined, {
@@ -715,10 +974,10 @@ export default function AdminDashboard() {
                           <td className="py-3.5 pl-2 font-medium text-white flex items-center gap-2.5">
                             <FileTypeBadge ext="PDF" className="scale-75 -my-2 shrink-0" />
                             <div className="min-w-0">
-                              <span className="truncate block max-w-[220px] sm:max-w-[340px] font-semibold text-white" title={file.display_name}>
+                              <span className="truncate block max-w-[200px] sm:max-w-[300px] font-semibold text-white" title={file.display_name}>
                                 {file.display_name}
                               </span>
-                              <span className="text-[10px] text-[#FFBAC7]/50 font-mono block truncate max-w-[220px] sm:max-w-[340px]">
+                              <span className="text-[10px] text-[#FFBAC7]/50 font-mono block truncate max-w-[200px] sm:max-w-[300px]">
                                 {file.storage_path}
                               </span>
                             </div>
@@ -734,6 +993,26 @@ export default function AdminDashboard() {
                             >
                               {CATEGORY_LABELS[file.category] || file.category}
                             </span>
+                          </td>
+
+                          {/* Registration Status */}
+                          <td className="py-3.5 whitespace-nowrap">
+                            {isRegistered ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[10px] font-bold text-emerald-300">
+                                <CheckCircle2 size={11} className="text-emerald-400" />
+                                <span>Registered</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setFileToRegister(file)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#850E35]/40 hover:bg-[#850E35] border border-[#850E35]/60 text-xs font-semibold text-white transition-colors cursor-pointer"
+                                title="Register this document in the database"
+                              >
+                                <Plus size={12} />
+                                <span>Register</span>
+                              </button>
+                            )}
                           </td>
 
                           {/* Size */}
@@ -769,7 +1048,11 @@ export default function AdminDashboard() {
                                 type="button"
                                 onClick={() => setFileToDelete(file)}
                                 className="p-1.5 rounded-lg text-[#FFBAC7]/60 hover:text-rose-300 hover:bg-rose-950/60 border border-transparent hover:border-rose-500/30 transition-colors cursor-pointer"
-                                title="Delete document from storage"
+                                title={
+                                  isRegistered
+                                    ? "File is registered in database. Unregister before deleting."
+                                    : "Delete document from storage"
+                                }
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -830,9 +1113,46 @@ export default function AdminDashboard() {
       </div>
 
       {/* =========================================================
-          5. DELETE CONFIRMATION MODAL (PORTAL TO DOCUMENT.BODY)
+          6. MODALS
       ========================================================== */}
+      {/* 6.1 Register Document Modal */}
+      {fileToRegister && (
+        <RegisterDocumentModal
+          file={fileToRegister}
+          isOpen={Boolean(fileToRegister)}
+          onClose={() => setFileToRegister(null)}
+          onSuccess={() => {
+            fetchFiles();
+            fetchRegisteredDocs();
+          }}
+        />
+      )}
+
+      {/* 6.2 Add Occupation Modal */}
+      {docToAddOccupation && (
+        <AddOccupationModal
+          doc={docToAddOccupation}
+          document={docToAddOccupation}
+          isOpen={Boolean(docToAddOccupation)}
+          onClose={() => setDocToAddOccupation(null)}
+          onSuccess={() => fetchRegisteredDocs()}
+        />
+      )}
+
+      {/* 6.3 Text Preview Modal */}
+      {docToPreviewText && (
+        <TextPreviewModal
+          doc={docToPreviewText}
+          document={docToPreviewText}
+          isOpen={Boolean(docToPreviewText)}
+          onClose={() => setDocToPreviewText(null)}
+        />
+      )}
+
+      {/* 6.4 Delete Confirmation Modal */}
       {fileToDelete &&
+        typeof window !== 'undefined' &&
+        window.document?.body &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div
@@ -874,9 +1194,15 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
-              <p className="text-xs text-[#FFBAC7]/80 leading-relaxed mb-6">
-                Are you sure you want to permanently delete this PDF from the private <code>Industry_Docs</code> storage bucket?
-              </p>
+              {registeredPathSet.has(fileToDelete.storage_path) ? (
+                <div className="p-3 mb-4 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs">
+                  <strong>Notice:</strong> This file is registered in the database. The backend will refuse deletion until it is unregistered.
+                </div>
+              ) : (
+                <p className="text-xs text-[#FFBAC7]/80 leading-relaxed mb-6">
+                  Are you sure you want to permanently delete this PDF from the private storage bucket?
+                </p>
+              )}
 
               <div className="flex items-center justify-end gap-3">
                 <button
@@ -909,7 +1235,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>,
-          document.body
+          window.document.body
         )}
     </div>
   );

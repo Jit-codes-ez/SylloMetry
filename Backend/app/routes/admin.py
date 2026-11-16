@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
 from app.core.security import get_current_admin
@@ -25,8 +25,18 @@ from app.schemas.industry_files import (
     IndustryFileListResponse,
     IndustryFileUploadResponse,
 )
+from app.schemas.industry_documents import (
+    AddOccupationRequest,
+    AddOccupationResponse,
+    DeleteOccupationResponse,
+    DocumentRegistrationRequest,
+    DocumentTextPreviewResponse,
+    IndustryDocumentItem,
+)
 from app.services.admin_service import AdminService
 from app.services.industry_storage_service import IndustryStorageService
+from app.services.industry_document_service import IndustryDocumentService
+from app.services.pdf_extraction_service import get_document_text_preview
 
 logger = logging.getLogger("app.routes.admin")
 
@@ -41,6 +51,11 @@ def get_admin_service() -> AdminService:
 def get_industry_storage_service() -> IndustryStorageService:
     """Dependency provider for IndustryStorageService."""
     return IndustryStorageService()
+
+
+def get_industry_document_service() -> IndustryDocumentService:
+    """Dependency provider for IndustryDocumentService."""
+    return IndustryDocumentService()
 
 
 # ==============================================================================
@@ -292,6 +307,137 @@ async def delete_industry_file(
         storage_path=storage_path,
         current_admin=current_admin,
     )
+
+
+# ==============================================================================
+# Endpoint 14: Get Stored Files Not Yet Registered in Database
+# GET /api/admin/industry-documents/unregistered
+# ==============================================================================
+@router.get(
+    "/industry-documents/unregistered",
+    response_model=List[Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="List Unregistered Stored Files",
+    description="Returns files in Supabase Storage whose storage_path is not registered in industry_documents.",
+)
+async def get_unregistered_industry_files(
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    doc_service: IndustryDocumentService = Depends(get_industry_document_service),
+) -> List[Dict[str, Any]]:
+    return doc_service.get_unregistered_files()
+
+
+# ==============================================================================
+# Endpoint 15: Register Uploaded PDF Document in Database
+# POST /api/admin/industry-documents
+# ==============================================================================
+@router.post(
+    "/industry-documents",
+    response_model=IndustryDocumentItem,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register Industry Document",
+    description="Inserts a row into industry_documents after verifying bucket storage path exists.",
+)
+async def register_industry_document(
+    payload: DocumentRegistrationRequest,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    doc_service: IndustryDocumentService = Depends(get_industry_document_service),
+) -> IndustryDocumentItem:
+    return doc_service.register_document(
+        payload=payload,
+        current_admin=current_admin,
+    )
+
+
+# ==============================================================================
+# Endpoint 16: List All Registered Industry Documents with Occupations
+# GET /api/admin/industry-documents
+# ==============================================================================
+@router.get(
+    "/industry-documents",
+    response_model=List[IndustryDocumentItem],
+    status_code=status.HTTP_200_OK,
+    summary="List Registered Industry Documents",
+    description="Returns registered industry documents along with linked occupations.",
+)
+async def get_registered_industry_documents(
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    doc_service: IndustryDocumentService = Depends(get_industry_document_service),
+) -> List[IndustryDocumentItem]:
+    return doc_service.get_registered_documents()
+
+
+# ==============================================================================
+# Endpoint 17: Link Occupation to Registered Industry Document
+# POST /api/admin/industry-documents/{document_id}/occupations
+# ==============================================================================
+@router.post(
+    "/industry-documents/{document_id}/occupations",
+    response_model=AddOccupationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Link Occupation to Industry Document",
+    description="Finds or creates an occupation and links it to the document via document_occupations.",
+)
+async def link_occupation_to_document(
+    document_id: int,
+    payload: AddOccupationRequest,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    doc_service: IndustryDocumentService = Depends(get_industry_document_service),
+) -> AddOccupationResponse:
+    return doc_service.link_occupation(
+        document_id=document_id,
+        payload=payload,
+        current_admin=current_admin,
+    )
+
+
+# ==============================================================================
+# Endpoint 18: Unlink Occupation from Registered Industry Document
+# DELETE /api/admin/industry-documents/{document_id}/occupations/{occupation_id}
+# ==============================================================================
+@router.delete(
+    "/industry-documents/{document_id}/occupations/{occupation_id}",
+    response_model=DeleteOccupationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Unlink Occupation from Document",
+    description="Removes an occupation link from document_occupations.",
+)
+async def unlink_occupation_from_document(
+    document_id: int,
+    occupation_id: int,
+    relationship_type: Optional[str] = Query(None, description="Optional relationship_type filter"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    doc_service: IndustryDocumentService = Depends(get_industry_document_service),
+) -> DeleteOccupationResponse:
+    return doc_service.unlink_occupation(
+        document_id=document_id,
+        occupation_id=occupation_id,
+        relationship_type=relationship_type,
+        current_admin=current_admin,
+    )
+
+
+# ==============================================================================
+# Endpoint 19: Preview Extracted Text from Industry PDF
+# GET /api/admin/industry-documents/{document_id}/text-preview
+# ==============================================================================
+@router.get(
+    "/industry-documents/{document_id}/text-preview",
+    response_model=DocumentTextPreviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Preview Extracted Text with PyMuPDF",
+    description="Extracts clean text per page from PDF, removes headers/footers, and flags low text.",
+)
+async def preview_document_text(
+    document_id: int,
+    page: Optional[int] = Query(None, ge=1, description="Optional specific page number to view full text"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+) -> DocumentTextPreviewResponse:
+    return get_document_text_preview(
+        document_id=document_id,
+        page=page,
+    )
+
 
 
 

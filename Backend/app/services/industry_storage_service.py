@@ -384,8 +384,32 @@ class IndustryStorageService:
         """
         Deletes an industry PDF document from private Supabase Storage.
         Requires admin privileges, safe path validation, and creates audit log.
+        Refuses (409 Conflict) if the storage_path is registered in industry_documents.
         """
         self.validate_storage_path(storage_path)
+
+        # Refuse deletion if file is registered in public.industry_documents
+        admin_client = get_supabase_admin_client()
+        if admin_client:
+            registered_res = (
+                admin_client.table("industry_documents")
+                .select("document_id, document_name")
+                .eq("storage_path", storage_path)
+                .limit(1)
+                .execute()
+            )
+            if registered_res.data and len(registered_res.data) > 0:
+                doc_info = registered_res.data[0]
+                logger.warning(
+                    "Blocked deletion of registered storage file '%s' (Document ID: %s, Name: '%s')",
+                    storage_path,
+                    doc_info.get("document_id"),
+                    doc_info.get("document_name"),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Cannot delete file '{storage_path}': It is registered as industry document ID {doc_info.get('document_id')} ('{doc_info.get('document_name')}').",
+                )
 
         storage = self._get_storage()
         try:

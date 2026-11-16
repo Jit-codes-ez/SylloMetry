@@ -388,4 +388,202 @@ export async function deleteIndustryFile(storagePath) {
   return data;
 }
 
+/**
+ * 14. Get stored files not yet registered in industry_documents.
+ * GET /api/admin/industry-documents/unregistered
+ */
+export async function getUnregisteredIndustryFiles() {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-documents/unregistered`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to fetch unregistered files.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * 15. Register an uploaded storage PDF into industry_documents.
+ * POST /api/admin/industry-documents
+ */
+export async function registerIndustryDocument({
+  document_name,
+  document_type,
+  issuing_organization,
+  source_url,
+  published_date,
+  storage_path,
+}) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = { 'Content-Type': 'application/json' };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-documents`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      document_name: document_name.trim(),
+      document_type: document_type.trim(),
+      issuing_organization: issuing_organization ? issuing_organization.trim() : null,
+      source_url: source_url ? source_url.trim() : null,
+      published_date: published_date ? published_date.trim() : null,
+      storage_path: storage_path.trim(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to register industry document.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 16. Get all registered industry documents with linked occupations.
+ * GET /api/admin/industry-documents
+ */
+export async function getRegisteredIndustryDocuments() {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-documents`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to fetch registered documents.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * 17. Link an occupation to a registered industry document.
+ * POST /api/admin/industry-documents/{document_id}/occupations
+ */
+export async function linkOccupationToDocument(documentId, {
+  classification_system,
+  classification_code,
+  occupation_name,
+  relationship_type,
+}) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = { 'Content-Type': 'application/json' };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-documents/${documentId}/occupations`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      classification_system: classification_system.trim(),
+      classification_code: classification_code.trim(),
+      occupation_name: occupation_name.trim(),
+      relationship_type: relationship_type.trim(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to link occupation.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 18. Unlink an occupation from a registered industry document.
+ * DELETE /api/admin/industry-documents/{document_id}/occupations/{occupation_id}
+ */
+export async function unlinkOccupationFromDocument(documentId, occupationId, relationshipType = null) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const params = new URLSearchParams();
+  if (relationshipType) {
+    params.append('relationship_type', relationshipType);
+  }
+
+  const queryString = params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/occupations/${occupationId}${queryString}`,
+    {
+      method: 'DELETE',
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to unlink occupation.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 19. Retrieve text preview and page statistics for an industry document.
+ * GET /api/admin/industry-documents/{document_id}/text-preview
+ */
+export async function getDocumentTextPreview(documentId, page = null) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const queryString = page ? `?page=${page}` : '';
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/text-preview${queryString}`,
+    {
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to preview extracted text.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
 

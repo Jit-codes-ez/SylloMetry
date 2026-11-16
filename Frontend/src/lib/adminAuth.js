@@ -586,4 +586,96 @@ export async function getDocumentTextPreview(documentId, page = null) {
   return data;
 }
 
+/**
+ * 16. Start an LLM skill extraction background job for a registered document.
+ * @param {number} documentId
+ * @param {boolean} [dryRun=false]
+ * @returns {Promise<{ job_id: string, status: string, document_id: number, dry_run: boolean, message: string }>}
+ */
+export async function startSkillExtraction(documentId, dryRun = false) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/extract-skills?dry_run=${Boolean(dryRun)}`,
+    {
+      method: 'POST',
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to start skill extraction.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 17. Poll the status and progress of a skill extraction job.
+ * @param {string} jobId
+ * @returns {Promise<{ job_id: string, status: 'running'|'done'|'failed', progress: Object, summary: Object, error: string }>}
+ */
+export async function getExtractionJobStatus(jobId) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/extraction-jobs/${jobId}`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to fetch extraction job status.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 18. Delete ONLY pending skill evidence rows for a document.
+ * @param {number} documentId
+ * @returns {Promise<{ success: boolean, message: string, deleted_count: number, document_id: number }>}
+ */
+export async function deletePendingEvidence(documentId) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/pending-evidence`,
+    {
+      method: 'DELETE',
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to delete pending evidence.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
 

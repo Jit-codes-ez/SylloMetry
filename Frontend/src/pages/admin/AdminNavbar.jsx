@@ -60,7 +60,7 @@ export default function AdminNavbar() {
         <div className="flex items-center gap-3">
           {/* Admin Avatar Pill Button */}
           <div className="relative" ref={dropdownRef}>
-            <button
+            <Button2
               type="button"
               onClick={() => setDropdownOpen((prev) => !prev)}
               aria-expanded={dropdownOpen}
@@ -82,7 +82,7 @@ export default function AdminNavbar() {
                 size={14}
                 className={cn('text-[#FFBAC7]/70 transition-transform duration-200', dropdownOpen && 'rotate-180')}
               />
-            </button>
+            </Button2>
 
             {/* Dropdown Menu */}
             {dropdownOpen && (
@@ -105,7 +105,7 @@ export default function AdminNavbar() {
                 </div>
 
                 <div className="space-y-1">
-                  <button
+                  <Button2
                     type="button"
                     onClick={() => {
                       setDropdownOpen(false);
@@ -115,9 +115,9 @@ export default function AdminNavbar() {
                   >
                     <UserPlus size={15} className="text-[#E36A6A]" />
                     <span>Add Admin</span>
-                  </button>
+                  </Button2>
 
-                  <button
+                  <Button2
                     type="button"
                     onClick={() => {
                       setDropdownOpen(false);
@@ -127,16 +127,16 @@ export default function AdminNavbar() {
                   >
                     <KeyRound size={15} className="text-[#E36A6A]" />
                     <span>Change Password</span>
-                  </button>
+                  </Button2>
 
-                  <button
+                  <Button2
                     type="button"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-white hover:text-white hover:bg-rose-950 transition-colors text-left cursor-pointer"
                   >
                     <LogOut size={15} className="text-rose-400" />
                     <span>Sign Out</span>
-                  </button>
+                  </Button2>
                 </div>
               </div>
             )}

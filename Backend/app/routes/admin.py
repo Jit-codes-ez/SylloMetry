@@ -1,6 +1,7 @@
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from app.core.security import get_current_admin
 from app.schemas.admin import (
@@ -33,10 +34,21 @@ from app.schemas.industry_documents import (
     DocumentTextPreviewResponse,
     IndustryDocumentItem,
 )
+from app.schemas.skill_extraction import (
+    DeletePendingEvidenceResponse,
+    JobStartResponse,
+    JobStatusResponse,
+)
 from app.services.admin_service import AdminService
 from app.services.industry_storage_service import IndustryStorageService
 from app.services.industry_document_service import IndustryDocumentService
 from app.services.pdf_extraction_service import get_document_text_preview
+from app.services.skill_extraction_service import (
+    create_job_record,
+    get_job_record,
+    run_skill_extraction_job,
+    delete_pending_evidence as svc_delete_pending_evidence,
+)
 
 logger = logging.getLogger("app.routes.admin")
 
@@ -437,6 +449,96 @@ async def preview_document_text(
         document_id=document_id,
         page=page,
     )
+
+
+# ==============================================================================
+# Endpoint 20: Start Skill Extraction Background Job
+# POST /api/admin/industry-documents/{document_id}/extract-skills
+# ==============================================================================
+@router.post(
+    "/industry-documents/{document_id}/extract-skills",
+    response_model=JobStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Initiate LLM Skill Extraction Job",
+    description="Starts an asynchronous job extracting technical skills with Gemini in 2-page windows.",
+)
+async def extract_skills(
+    document_id: int,
+    background_tasks: BackgroundTasks,
+    dry_run: bool = Query(False, description="When true, executes LLM and validation without inserting DB rows"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+) -> JobStartResponse:
+    job_id = str(uuid.uuid4())
+    create_job_record(job_id=job_id, document_id=document_id, dry_run=dry_run)
+    background_tasks.add_task(
+        run_skill_extraction_job,
+        job_id=job_id,
+        document_id=document_id,
+        dry_run=dry_run,
+    )
+    return JobStartResponse(
+        job_id=job_id,
+        status="running",
+        document_id=document_id,
+        dry_run=dry_run,
+        message=f"Skill extraction job initiated in background ({'DRY RUN' if dry_run else 'LIVE INSERT'}).",
+    )
+
+
+# ==============================================================================
+# Endpoint 21: Get Skill Extraction Job Status
+# GET /api/admin/extraction-jobs/{job_id}
+# ==============================================================================
+@router.get(
+    "/extraction-jobs/{job_id}",
+    response_model=JobStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Poll Skill Extraction Job Status",
+    description="Retrieves current progress, status, and final extraction summary of a background job.",
+)
+async def get_extraction_job_status(
+    job_id: str,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+) -> JobStatusResponse:
+    job = get_job_record(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Extraction job '{job_id}' not found.",
+        )
+    return JobStatusResponse(**job)
+
+
+# ==============================================================================
+# Endpoint 22: Delete Pending Evidence for Document
+# DELETE /api/admin/industry-documents/{document_id}/pending-evidence
+# ==============================================================================
+@router.delete(
+    "/industry-documents/{document_id}/pending-evidence",
+    response_model=DeletePendingEvidenceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete Pending Skill Evidence",
+    description="Deletes ONLY skill evidence rows for the document with validation_status = 'pending'. Leaves verified rows intact.",
+)
+async def delete_pending_evidence_endpoint(
+    document_id: int,
+    current_admin: SafeAdmin = Depends(get_current_admin),
+) -> DeletePendingEvidenceResponse:
+    try:
+        deleted_count = svc_delete_pending_evidence(document_id)
+        return DeletePendingEvidenceResponse(
+            success=True,
+            message=f"Successfully deleted {deleted_count} pending skill evidence row(s).",
+            deleted_count=deleted_count,
+            document_id=document_id,
+        )
+    except Exception as e:
+        logger.exception("Failed to delete pending evidence for document %d: %s", document_id, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete pending evidence: {str(e)}",
+        )
+
 
 
 

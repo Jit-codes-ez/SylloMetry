@@ -56,6 +56,16 @@ class Settings(BaseSettings):
         description="Name of the private Supabase Storage bucket for industry documents",
     )
 
+    # Gemini LLM Configuration
+    GEMINI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Google Gemini API key for skill extraction",
+    )
+    GEMINI_MODEL: str = Field(
+        default="gemini-3.1-flash-lite",
+        description="Gemini model identifier used for extraction",
+    )
+
     @property
     def publishable_key(self) -> str:
         """Returns the publishable anon key, respecting alias if provided."""

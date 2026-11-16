@@ -21,6 +21,8 @@ import {
   Unlink,
   ExternalLink,
   Layers,
+  Sparkles,
+  RotateCcw,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import AdminNavbar from './AdminNavbar';
@@ -35,10 +37,12 @@ import {
   deleteIndustryFile,
   getRegisteredIndustryDocuments,
   unlinkOccupationFromDocument,
+  deletePendingEvidence,
 } from '@/lib/adminAuth';
 import RegisterDocumentModal from './RegisterDocumentModal';
 import AddOccupationModal from './AddOccupationModal';
 import TextPreviewModal from './TextPreviewModal';
+import ExtractSkillsModal from './ExtractSkillsModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -94,6 +98,10 @@ export default function AdminDashboard() {
   const [fileToRegister, setFileToRegister] = useState(null);
   const [docToAddOccupation, setDocToAddOccupation] = useState(null);
   const [docToPreviewText, setDocToPreviewText] = useState(null);
+  const [docToExtractSkills, setDocToExtractSkills] = useState(null);
+  const [docToDeletePending, setDocToDeletePending] = useState(null);
+  const [isDeletingPending, setIsDeletingPending] = useState(false);
+  const [pendingSuccessMsg, setPendingSuccessMsg] = useState(null);
 
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
@@ -328,6 +336,27 @@ export default function AdminDashboard() {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Delete Pending Evidence Handler
+  // ---------------------------------------------------------------------------
+  const confirmDeletePendingEvidence = async () => {
+    if (!docToDeletePending || isDeletingPending) return;
+    setIsDeletingPending(true);
+    setErrorMessage(null);
+    try {
+      const res = await deletePendingEvidence(docToDeletePending.document_id);
+      setPendingSuccessMsg(res.message || `Deleted ${res.deleted_count} pending evidence row(s).`);
+      setDocToDeletePending(null);
+      await fetchRegisteredDocs();
+      setTimeout(() => setPendingSuccessMsg(null), 5000);
+    } catch (err) {
+      console.error('Delete pending evidence error:', err);
+      setErrorMessage(err.message || 'Failed to delete pending evidence.');
+    } finally {
+      setIsDeletingPending(false);
+    }
+  };
+
   const adminName =
     admin?.full_name?.split(' ')[0] ||
     admin?.email?.split('@')[0] ||
@@ -405,6 +434,26 @@ export default function AdminDashboard() {
               type="button"
               onClick={() => setErrorMessage(null)}
               className="text-rose-300 hover:text-white text-xs font-bold underline cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Global Success Notification for Pending Deletion */}
+        {pendingSuccessMsg && (
+          <div
+            role="status"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/80 p-4 text-xs text-emerald-200 animate-in fade-in duration-200"
+          >
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 size={17} className="text-emerald-400 shrink-0" />
+              <span>{pendingSuccessMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingSuccessMsg(null)}
+              className="text-emerald-300 hover:text-white text-xs font-bold underline cursor-pointer"
             >
               Dismiss
             </button>
@@ -681,7 +730,7 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
-              <button
+              <Button2
                 type="button"
                 onClick={fetchRegisteredDocs}
                 disabled={isLoadingRegistered}
@@ -690,7 +739,7 @@ export default function AdminDashboard() {
               >
                 <RefreshCw size={13} className={cn(isLoadingRegistered && 'animate-spin')} />
                 <span>Refresh</span>
-              </button>
+              </Button2>
             </div>
 
             {/* Registered Documents Table / List */}
@@ -767,28 +816,39 @@ export default function AdminDashboard() {
                         </div>
 
                         {/* Document Actions */}
-                        <div className="flex items-center gap-2 shrink-0 self-start">
+                        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+                          {/* Extract Skills Button */}
+                          <Button2
+                            type="button"
+                            onClick={() => setDocToExtractSkills(doc)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-900 to-purple-700 hover:brightness-110 border border-purple-500/40 text-purple-100 text-xs font-bold shadow-md shadow-purple-950/40 transition-all cursor-pointer"
+                            title="Extract skills via Gemini LLM in 2-page windows"
+                          >
+                            <Sparkles size={14} className="text-purple-300" />
+                            <span>Extract Skills</span>
+                          </Button2>
+
                           {/* Preview Text Button */}
-                          <button
+                          <Button2
                             type="button"
                             onClick={() => setDocToPreviewText(doc)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#850E35] to-[#B8194E] hover:brightness-110 text-white text-xs font-bold shadow-md shadow-[#850E35]/30 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-[#850E35] to-[#B8194E] hover:brightness-110 text-white text-xs font-bold shadow-md shadow-[#850E35]/30 transition-all cursor-pointer"
                             title="Extract and inspect text"
                           >
                             <BookOpen size={14} />
                             <span>Preview Text</span>
-                          </button>
+                          </Button2>
 
                           {/* Link Occupation Button */}
-                          <button
+                          <Button2
                             type="button"
                             onClick={() => setDocToAddOccupation(doc)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#290516] hover:bg-[#36081B] border border-[#850E35]/60 text-xs font-semibold text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#290516] hover:bg-[#36081B] border border-[#850E35]/60 text-xs font-semibold text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
                             title="Link an occupation standard to this document"
                           >
                             <Plus size={14} />
                             <span>Link Occupation</span>
-                          </button>
+                          </Button2>
                         </div>
                       </div>
 
@@ -905,7 +965,7 @@ export default function AdminDashboard() {
 
 
                 {/* Refresh Button */}
-                <button
+                <Button2
                   type="button"
                   onClick={fetchFiles}
                   disabled={isLoadingFiles}
@@ -913,7 +973,7 @@ export default function AdminDashboard() {
                   title="Refresh files from storage"
                 >
                   <RefreshCw size={15} className={cn(isLoadingFiles && 'animate-spin')} />
-                </button>
+                </Button2>
                 </div>
               </div>
             </div>
@@ -1149,7 +1209,96 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* 6.4 Delete Confirmation Modal */}
+      {/* 6.4 Extract Skills Modal */}
+      {docToExtractSkills && (
+        <ExtractSkillsModal
+          doc={docToExtractSkills}
+          document={docToExtractSkills}
+          isOpen={Boolean(docToExtractSkills)}
+          onClose={() => setDocToExtractSkills(null)}
+          onSuccess={() => fetchRegisteredDocs()}
+        />
+      )}
+
+      {/* 6.5 Delete Pending Evidence Confirmation Modal */}
+      {docToDeletePending &&
+        typeof window !== 'undefined' &&
+        window.document?.body &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div
+              className="relative w-full max-w-md rounded-3xl border border-[#850E35]/60 p-6 sm:p-7 shadow-2xl text-left"
+              style={{ backgroundColor: '#1C040E' }}
+            >
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-400">
+                    <RotateCcw size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white">Delete Pending Evidence?</h4>
+                    <p className="text-xs text-[#FFBAC7]/70">Clears unverified evidence rows.</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDocToDeletePending(null)}
+                  disabled={isDeletingPending}
+                  className="rounded-lg p-1.5 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="my-4 p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1.5 text-xs">
+                <p className="font-bold text-white truncate">
+                  {docToDeletePending.document_name}
+                </p>
+                <p className="text-[10px] font-mono text-[#FFBAC7]/50 truncate">
+                  Document ID: {docToDeletePending.document_id}
+                </p>
+              </div>
+
+              <p className="text-xs text-[#FFBAC7]/80 leading-relaxed mb-6">
+                This will delete <strong>ONLY</strong> the skill evidence rows with status <code>pending</code> extracted from this document, allowing you to re-run extraction. Any verified rows will <strong>NOT</strong> be affected.
+              </p>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDocToDeletePending(null)}
+                  disabled={isDeletingPending}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#FFBAC7] hover:text-white bg-[#18030C] hover:bg-[#250514] border border-[#850E35]/40 transition-colors"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmDeletePendingEvidence}
+                  disabled={isDeletingPending}
+                  className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-700 to-rose-600 hover:brightness-110 shadow-lg shadow-rose-900/40 transition-all cursor-pointer disabled:opacity-60"
+                >
+                  {isDeletingPending ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin text-white" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={14} />
+                      <span>Confirm Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          window.document.body
+        )}
+
+      {/* 6.6 Delete Document Confirmation Modal */}
       {fileToDelete &&
         typeof window !== 'undefined' &&
         window.document?.body &&

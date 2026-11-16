@@ -253,7 +253,7 @@ export default function AddAdminModal({ isOpen, onClose, onAdminCreated }) {
               <span>Cancel</span>
             </Button2>
 
-            <button
+            <Button2
               type="submit"
               disabled={isSubmitting}
               className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#850E35] via-[#A81546] to-[#850E35] hover:brightness-110 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-[#850E35]/35 transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
@@ -269,7 +269,7 @@ export default function AddAdminModal({ isOpen, onClose, onAdminCreated }) {
                   <span>Create Administrator</span>
                 </>
               )}
-            </button>
+            </Button2>
           </div>
         </form>
       </div>

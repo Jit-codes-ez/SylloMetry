@@ -133,9 +133,6 @@ export default function AddAdminModal({ isOpen, onClose, onAdminCreated }) {
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#850E35]/30 rounded-full blur-[70px] pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-[#C73659]/20 rounded-full blur-[70px] pointer-events-none" />
 
-        {/* Top Accent Strip */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#C73659] to-transparent" />
-
         {/* Close Button */}
         <button
           type="button"

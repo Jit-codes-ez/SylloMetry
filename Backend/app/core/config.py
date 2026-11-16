@@ -50,6 +50,12 @@ class Settings(BaseSettings):
         description="Supabase Backend-only Service Role Secret Key",
     )
 
+    # Supabase Storage Configuration
+    SUPABASE_INDUSTRY_BUCKET: str = Field(
+        default="Industry_Docs",
+        description="Name of the private Supabase Storage bucket for industry documents",
+    )
+
     @property
     def publishable_key(self) -> str:
         """Returns the publishable anon key, respecting alias if provided."""

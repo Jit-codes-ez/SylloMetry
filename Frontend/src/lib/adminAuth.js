@@ -252,8 +252,134 @@ export async function changeAdminPassword({ current_password, new_password }) {
 
   const data = await response.json().catch(() => ({}));
 
+  return data;
+}
+
+/**
+ * Categories allowlist for industry documents
+ */
+export const ALLOWED_INDUSTRY_CATEGORIES = [
+  { value: 'qualification_file', label: 'Qualification File' },
+  { value: 'job_description', label: 'Job Description' },
+  { value: 'certification_guide', label: 'Certification Guide' },
+  { value: 'hiring_assessment_syllabus', label: 'Hiring Assessment Syllabus' },
+  { value: 'industry_report', label: 'Industry Report' },
+];
+
+/**
+ * 10. Upload industry PDF document to Supabase Storage.
+ * POST /api/admin/industry-files
+ */
+export async function uploadIndustryFile(file, category) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', category);
+
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-files`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const errorMsg = data.detail || data.message || 'Failed to change administrator password.';
+    const errorMsg = data.detail || data.message || 'Failed to upload industry file.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 11. List stored industry PDF documents with optional category filtering and pagination.
+ * GET /api/admin/industry-files
+ */
+export async function listIndustryFiles({ category = '', limit = 10, offset = 0 } = {}) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const params = new URLSearchParams();
+  if (category) params.append('category', category);
+  params.append('limit', String(limit));
+  params.append('offset', String(offset));
+
+  const response = await fetch(`${API_BASE}/api/admin/industry-files?${params.toString()}`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to list industry files.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 12. Request a 60-second temporary signed download URL for an industry PDF.
+ * GET /api/admin/industry-files/download
+ */
+export async function getIndustryFileDownloadUrl(storagePath) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const params = new URLSearchParams({ storage_path: storagePath });
+  const response = await fetch(`${API_BASE}/api/admin/industry-files/download?${params.toString()}`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to generate download URL.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data.signed_url;
+}
+
+/**
+ * 13. Delete an industry PDF document from Supabase Storage.
+ * DELETE /api/admin/industry-files
+ */
+export async function deleteIndustryFile(storagePath) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const params = new URLSearchParams({ storage_path: storagePath });
+  const response = await fetch(`${API_BASE}/api/admin/industry-files?${params.toString()}`, {
+    method: 'DELETE',
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to delete industry file.';
     const err = new Error(errorMsg);
     err.status = response.status;
     throw err;

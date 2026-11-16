@@ -1,6 +1,6 @@
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
 from app.core.security import get_current_admin
 from app.schemas.admin import (
@@ -19,7 +19,14 @@ from app.schemas.admin import (
     AdminChangePasswordResponse,
     SafeAdmin,
 )
+from app.schemas.industry_files import (
+    IndustryFileDeleteResponse,
+    IndustryFileDownloadResponse,
+    IndustryFileListResponse,
+    IndustryFileUploadResponse,
+)
 from app.services.admin_service import AdminService
+from app.services.industry_storage_service import IndustryStorageService
 
 logger = logging.getLogger("app.routes.admin")
 
@@ -29,6 +36,11 @@ router = APIRouter(prefix="/api/admin", tags=["Administration Portal"])
 def get_admin_service() -> AdminService:
     """Dependency provider for AdminService."""
     return AdminService()
+
+
+def get_industry_storage_service() -> IndustryStorageService:
+    """Dependency provider for IndustryStorageService."""
+    return IndustryStorageService()
 
 
 # ==============================================================================
@@ -187,6 +199,100 @@ async def change_admin_password(
     service: AdminService = Depends(get_admin_service),
 ) -> AdminChangePasswordResponse:
     return service.change_admin_password(payload, current_admin)
+
+
+# ==============================================================================
+# Endpoint 10: Upload Industry PDF Document to Supabase Storage
+# POST /api/admin/industry-files
+# ==============================================================================
+@router.post(
+    "/industry-files",
+    response_model=IndustryFileUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload Industry PDF Document",
+    description="Stores original industry dataset PDF in private Supabase Storage bucket.",
+)
+async def upload_industry_file(
+    file: UploadFile = File(..., description="PDF document (max 5 MB)"),
+    category: str = Form(..., description="Document category from allowlist"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    storage_service: IndustryStorageService = Depends(get_industry_storage_service),
+) -> IndustryFileUploadResponse:
+    return await storage_service.upload_industry_file(
+        file=file,
+        category=category,
+        current_admin=current_admin,
+    )
+
+
+# ==============================================================================
+# Endpoint 11: List Stored Industry Documents
+# GET /api/admin/industry-files
+# ==============================================================================
+@router.get(
+    "/industry-files",
+    response_model=IndustryFileListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List Stored Industry Documents",
+    description="Returns stored industry files, filterable by category, newest-first.",
+)
+async def list_industry_files(
+    category: Optional[str] = Query(None, description="Optional category filter"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    storage_service: IndustryStorageService = Depends(get_industry_storage_service),
+) -> IndustryFileListResponse:
+    return storage_service.list_industry_files(
+        category=category,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ==============================================================================
+# Endpoint 12: Get 60-Second Temporary Signed Download URL
+# GET /api/admin/industry-files/download
+# ==============================================================================
+@router.get(
+    "/industry-files/download",
+    response_model=IndustryFileDownloadResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Temporary Signed Download URL",
+    description="Returns a 60-second temporary signed URL to download a stored industry PDF.",
+)
+async def get_industry_file_download_url(
+    storage_path: str = Query(..., description="Storage path ({category}/{filename})"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    storage_service: IndustryStorageService = Depends(get_industry_storage_service),
+) -> IndustryFileDownloadResponse:
+    return storage_service.get_signed_download_url(
+        storage_path=storage_path,
+        current_admin=current_admin,
+    )
+
+
+# ==============================================================================
+# Endpoint 13: Delete Stored Industry Document
+# DELETE /api/admin/industry-files
+# ==============================================================================
+@router.delete(
+    "/industry-files",
+    response_model=IndustryFileDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete Stored Industry Document",
+    description="Deletes an industry document from private Supabase Storage.",
+)
+async def delete_industry_file(
+    storage_path: str = Query(..., description="Storage path ({category}/{filename}) to delete"),
+    current_admin: SafeAdmin = Depends(get_current_admin),
+    storage_service: IndustryStorageService = Depends(get_industry_storage_service),
+) -> IndustryFileDeleteResponse:
+    return storage_service.delete_industry_file(
+        storage_path=storage_path,
+        current_admin=current_admin,
+    )
+
 
 
 

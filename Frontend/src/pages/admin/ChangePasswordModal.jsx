@@ -145,9 +145,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#850E35]/30 rounded-full blur-[70px] pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-[#C73659]/20 rounded-full blur-[70px] pointer-events-none" />
 
-        {/* Top Accent Strip */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#C73659] to-transparent" />
-
         {/* Close Button */}
         <button
           type="button"
@@ -160,11 +157,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
 
         {/* Modal Header */}
         <div className="mb-6 space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#36081B] border border-[#C73659]/50 text-[#FFA8B8] text-[11px] font-bold tracking-wide uppercase shadow-inner">
-            <ShieldCheck size={14} className="text-[#E36A6A]" />
-            <span>Account Security</span>
-          </div>
-
           <div className="flex items-center gap-3 pt-1">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#850E35] to-[#B8194E] text-white shadow-md shadow-[#850E35]/30">
               <KeyRound size={20} />

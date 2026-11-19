@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
@@ -114,8 +115,13 @@ class IndustryDocumentService:
             )
 
         # 4. Insert into public.industry_documents
+        clean_doc_name = re.sub(r"(?i)(\.pdf)+$", "", payload.document_name.strip()).strip("._-")
+        if not clean_doc_name:
+            clean_doc_name = "document"
+        clean_doc_name = f"{clean_doc_name}.pdf"
+
         insert_data = {
-            "document_name": payload.document_name.strip(),
+            "document_name": clean_doc_name,
             "document_type": doc_type,
             "issuing_organization": payload.issuing_organization.strip() if payload.issuing_organization else None,
             "source_url": payload.source_url.strip() if payload.source_url else None,
@@ -177,38 +183,46 @@ class IndustryDocumentService:
             return []
 
         # 2. Fetch linked occupations
-        links_res = (
-            client.table("document_occupations")
-            .select("id, document_id, occupation_id, relationship_type, occupations(occupation_id, classification_system, classification_code, occupation_name)")
-            .execute()
-        )
-        links = links_res.data or []
+        try:
+            links_res = (
+                client.table("document_occupations")
+                .select("id, document_id, occupation_code, relationship_type, occupations(occupation_code, occupation_name)")
+                .execute()
+            )
+            links = links_res.data or []
+        except Exception as e:
+            logger.warning("Error fetching linked occupations: %s", str(e))
+            links = []
 
         # Map occupations by document_id
         occupations_by_doc: Dict[int, List[LinkedOccupationItem]] = {}
         for link in links:
             d_id = link.get("document_id")
             occ_obj = link.get("occupations") or {}
-            if not occ_obj:
-                continue
+            occ_code = link.get("occupation_code") or (occ_obj.get("occupation_code") if isinstance(occ_obj, dict) else "") or ""
+            occ_name = (occ_obj.get("occupation_name") if isinstance(occ_obj, dict) else "") or ""
 
             item = LinkedOccupationItem(
                 id=link["id"],
-                occupation_id=link["occupation_id"],
-                classification_system=occ_obj.get("classification_system", ""),
-                classification_code=occ_obj.get("classification_code", ""),
-                occupation_name=occ_obj.get("occupation_name", ""),
+                occupation_code=str(occ_code),
+                occupation_name=str(occ_name),
                 relationship_type=link.get("relationship_type", "aligned_nco"),
+                classification_code=str(occ_code),
+                classification_system="NCO",
+                occupation_id=link.get("id"),
             )
             occupations_by_doc.setdefault(d_id, []).append(item)
 
         results: List[IndustryDocumentItem] = []
         for doc in docs:
             d_id = doc["document_id"]
+            raw_name = doc.get("document_name") or "document.pdf"
+            clean_name = re.sub(r"(?i)(\.pdf)+$", "", raw_name).strip("._-")
+            clean_name = f"{clean_name}.pdf" if clean_name else "document.pdf"
             results.append(
                 IndustryDocumentItem(
                     document_id=d_id,
-                    document_name=doc["document_name"],
+                    document_name=clean_name,
                     document_type=doc["document_type"],
                     issuing_organization=doc.get("issuing_organization"),
                     source_url=doc.get("source_url"),

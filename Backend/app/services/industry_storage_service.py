@@ -50,37 +50,37 @@ class IndustryStorageService:
     def sanitize_filename(filename: str, max_length: int = 100) -> str:
         """
         Sanitizes original filename keeping only letters, digits, dots, hyphens, and underscores.
-        Replaces any other character with an underscore, limits length, and guarantees .pdf extension.
+        Replaces any other character with an underscore, limits length, strips repeated .pdf,
+        and guarantees exactly one .pdf extension.
         """
         base = Path(filename).name
+        # Strip any repeated .pdf extensions at the end first (e.g. file.pdf.pdf -> file)
+        stem = re.sub(r"(?i)(\.pdf)+$", "", base).strip("._-")
         # Keep letters, digits, dots, hyphens, underscores; replace everything else with '_'
-        sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", base)
+        sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", stem)
         # Collapse repeated underscores
-        sanitized = re.sub(r"_+", "_", sanitized)
+        sanitized = re.sub(r"_+", "_", sanitized).strip("._-")
 
-        if not sanitized.lower().endswith(".pdf"):
-            sanitized = f"{sanitized}.pdf"
+        if not sanitized:
+            sanitized = "industry_document"
 
-        # Truncate length while preserving the .pdf extension
-        if len(sanitized) > max_length:
-            stem = sanitized[:-4][: max_length - 4].rstrip("._-")
-            sanitized = f"{stem}.pdf"
+        # Truncate length while preserving room for .pdf extension (4 chars)
+        max_stem_length = max_length - 4
+        if len(sanitized) > max_stem_length:
+            sanitized = sanitized[:max_stem_length].rstrip("._-")
 
-        # Safe fallback
-        if sanitized.lower() in ("", ".pdf", "_.pdf"):
-            sanitized = "industry_document.pdf"
-
-        return sanitized
+        return f"{sanitized}.pdf"
 
     @staticmethod
     def extract_display_name(filename: str) -> str:
         """
-        Extracts original display filename by stripping the {uuid}_ prefix.
+        Extracts original display filename by stripping the {uuid}_ prefix
+        and ensures no duplicate .pdf extensions.
         """
         parts = filename.split("_", 1)
-        if len(parts) > 1 and parts[1]:
-            return parts[1]
-        return filename
+        name = parts[1] if len(parts) > 1 and parts[1] else filename
+        stem = re.sub(r"(?i)(\.pdf)+$", "", name).strip("._-")
+        return f"{stem}.pdf" if stem else "document.pdf"
 
     @staticmethod
     def validate_storage_path(storage_path: str) -> tuple[str, str]:
@@ -155,12 +155,19 @@ class IndustryStorageService:
             )
 
         # 2. Extension validation
-        original_filename = file.filename or "uploaded_document.pdf"
-        if not original_filename.lower().endswith(".pdf"):
+        raw_filename = (file.filename or "uploaded_document.pdf").strip()
+        if not raw_filename.lower().endswith(".pdf"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid file format. Only PDF files (.pdf) are allowed.",
             )
+
+        # Normalize original filename to strip any duplicate .pdf extensions (e.g. file.pdf.pdf -> file.pdf)
+        clean_base = Path(raw_filename).name
+        clean_stem = re.sub(r"(?i)(\.pdf)+$", "", clean_base).strip()
+        if not clean_stem:
+            clean_stem = "uploaded_document"
+        original_filename = f"{clean_stem}.pdf"
 
         # 3. MIME type validation
         content_type = (file.content_type or "").strip().lower()
@@ -241,9 +248,79 @@ class IndustryStorageService:
             content_type="application/pdf",
         )
 
+        # 8. Automatic Registration in public.industry_documents
+        admin_client = get_supabase_admin_client()
+        if not admin_client:
+            # Storage upload succeeded, but database client is unavailable. Clean up storage object.
+            try:
+                storage.remove([storage_path])
+                logger.info("Cleaned up storage object '%s' because database client was unavailable.", storage_path)
+            except Exception as cleanup_err:
+                logger.critical(
+                    "ORPHANED_STORAGE_OBJECT: Failed to clean up storage object '%s' after DB client failure: %s",
+                    storage_path,
+                    str(cleanup_err),
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database client unavailable to register document.",
+            )
+
+        doc_record = {
+            "document_name": original_filename[:255],
+            "document_type": category,
+            "storage_path": storage_path,
+        }
+
+        try:
+            insert_res = admin_client.table("industry_documents").insert(doc_record).execute()
+            if not insert_res.data:
+                raise RuntimeError("Database insert returned empty result set.")
+            created_doc = insert_res.data[0]
+            document_id = created_doc["document_id"]
+        except Exception as db_err:
+            db_err_str = str(db_err)
+            logger.error("Failed to insert industry_documents record for path '%s': %s", storage_path, db_err_str)
+            # Attempt rollback by deleting the uploaded file from Supabase storage
+            try:
+                storage.remove([storage_path])
+                logger.info("Cleaned up orphaned storage object '%s' after DB insert failure.", storage_path)
+            except Exception as cleanup_err:
+                logger.critical(
+                    "ORPHANED_STORAGE_OBJECT: Failed to delete uploaded storage object '%s' after DB insert error. Cleanup error: %s",
+                    storage_path,
+                    str(cleanup_err),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Database insertion failed and storage cleanup failed. Orphaned object at '{storage_path}'. DB Error: {db_err_str}",
+                )
+
+            if "duplicate" in db_err_str.lower() or "unique" in db_err_str.lower() or "23505" in db_err_str:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A document with storage path '{storage_path}' is already registered.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to register document in database: {db_err_str}",
+            )
+
+        logger.info(
+            "AUDIT: Admin id=%s email=%s action=upload_and_register document_id=%s path=%s",
+            current_admin.id,
+            current_admin.email,
+            document_id,
+            storage_path,
+        )
+
         return IndustryFileUploadResponse(
             success=True,
-            message=f"File '{sanitized_display_name}' uploaded successfully to category '{category}'.",
+            message=f"Document '{original_filename}' uploaded and registered successfully.",
+            document_id=document_id,
+            document_name=original_filename,
+            document_type=category,
+            storage_path=storage_path,
             file=item,
         )
 
@@ -326,7 +403,7 @@ class IndustryStorageService:
     def get_signed_download_url(
         self,
         storage_path: str,
-        current_admin: SafeAdmin,
+        current_admin: Optional[SafeAdmin] = None,
     ) -> IndustryFileDownloadResponse:
         """
         Generates a 60-second temporary signed download URL for an industry PDF.
@@ -360,10 +437,12 @@ class IndustryStorageService:
         now_iso = datetime.utcnow().isoformat() + "Z"
 
         # Structured audit log
+        admin_id = getattr(current_admin, "id", "backend_system") if current_admin else "backend_system"
+        admin_email = getattr(current_admin, "email", "system") if current_admin else "system"
         logger.info(
             "AUDIT: Admin id=%s email=%s action=download path=%s timestamp=%s",
-            current_admin.id,
-            current_admin.email,
+            admin_id,
+            admin_email,
             storage_path,
             now_iso,
         )

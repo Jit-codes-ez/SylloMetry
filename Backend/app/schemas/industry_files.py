@@ -1,21 +1,15 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
-# Fixed allowlist of categories for industry documents
+# Fixed allowlist of categories for industry documents (Part 2: strictly qualification_file and job_description)
 ALLOWED_INDUSTRY_CATEGORIES = (
     "qualification_file",
     "job_description",
-    "certification_guide",
-    "hiring_assessment_syllabus",
-    "industry_report",
 )
 
 IndustryCategory = Literal[
     "qualification_file",
     "job_description",
-    "certification_guide",
-    "hiring_assessment_syllabus",
-    "industry_report",
 ]
 
 
@@ -30,10 +24,14 @@ class IndustryFileItem(BaseModel):
 
 
 class IndustryFileUploadResponse(BaseModel):
-    """Response returned after successful industry PDF upload."""
+    """Response returned after successful industry PDF upload and automatic document registration."""
     success: bool = True
-    message: str = "Industry document uploaded successfully."
-    file: IndustryFileItem
+    message: str = "Industry document uploaded and registered successfully."
+    document_id: int = Field(..., description="Generated database document_id from industry_documents")
+    document_name: str = Field(..., description="Original filename of the uploaded document")
+    document_type: str = Field(..., description="Document category (qualification_file or job_description)")
+    storage_path: str = Field(..., description="Storage object path in Industry_Docs bucket")
+    file: Optional[IndustryFileItem] = Field(default=None, description="Metadata of stored file")
 
 
 class IndustryFileListResponse(BaseModel):

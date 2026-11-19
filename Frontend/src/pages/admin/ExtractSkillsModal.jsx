@@ -3,137 +3,520 @@ import { createPortal } from 'react-dom';
 import {
   X,
   Sparkles,
-  Play,
   Loader2,
   CheckCircle2,
-  AlertTriangle,
+  AlertCircle,
   FileText,
-  Clock,
+  Briefcase,
+  Plus,
+  Trash2,
   Layers,
-  ShieldCheck,
-  ChevronRight,
-  Database,
-  Info,
+  ArrowRight,
+  RefreshCw,
+  Search,
   Check,
-  Copy,
+  Play,
+  Info,
+  Filter,
+  Tag,
+  BookOpen,
+  Wrench,
+  Cpu,
+  BookmarkCheck,
+  ShieldAlert,
 } from 'lucide-react';
-import { startSkillExtraction, getExtractionJobStatus } from '@/lib/adminAuth';
-import { Button2 } from '@/components/Button2';
+import {
+  getDocumentExtractionPreview,
+  saveDocumentOccupationsBatch,
+  startSkillExtraction,
+  getExtractionJobStatus,
+  saveDocumentSkills,
+} from '@/lib/adminAuth';
 
-const SKILL_TYPE_BADGES = {
-  tool: 'bg-blue-950/70 text-blue-300 border-blue-500/40',
-  technique: 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40',
-  concept: 'bg-purple-950/70 text-purple-300 border-purple-500/40',
-  domain_knowledge: 'bg-amber-950/70 text-amber-300 border-amber-500/40',
-  soft_skill: 'bg-rose-950/70 text-rose-300 border-rose-500/40',
-};
-
-export default function ExtractSkillsModal({ doc, document: docProp, isOpen, onClose, onSuccess }) {
+export default function ExtractSkillsModal({
+  doc,
+  document: docProp,
+  isOpen,
+  onClose,
+  onSuccess,
+}) {
   const docItem = doc || docProp;
   if (!isOpen || !docItem) return null;
 
-  const [dryRun, setDryRun] = useState(false);
-  const [jobId, setJobId] = useState(null);
-  const [jobStatus, setJobStatus] = useState('idle'); // 'idle' | 'running' | 'done' | 'failed'
-  const [progress, setProgress] = useState({ windows_done: 0, total_windows: 0, current_step: '' });
-  const [summary, setSummary] = useState(null);
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [activeTab, setActiveTab] = useState('accepted'); // 'accepted' | 'rejected'
-  const [copiedQuoteIdx, setCopiedQuoteIdx] = useState(null);
+  // Active Tab: 'skills' (Extracted Skills), 'occupations' (Occupation/Role), 'text' (Complete Extracted Text)
+  const [activeTab, setActiveTab] = useState('occupations');
 
-  const pollIntervalRef = useRef(null);
+  // Loading & Error States for Initial Preview (Part 3)
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
-  // Poll job status while running
+  // Extracted Data (Part 3)
+  const [pages, setPages] = useState([]);
+  const [totalCharacters, setTotalCharacters] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // Editable Occupations State (Part 3)
+  const [occupations, setOccupations] = useState([]);
+
+  // Submission & Validation States for Occupations (Part 3)
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [submitSuccess, setSubmitSuccess] = useState(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isOccupationsSaved, setIsOccupationsSaved] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Part 4: Gemini Skill Extraction & Temporary Review States
+  const [isExtractingSkills, setIsExtractingSkills] = useState(false);
+  const [extractionJobId, setExtractionJobId] = useState(null);
+  const [extractionProgress, setExtractionProgress] = useState({
+    windows_done: 0,
+    total_windows: 0,
+    current_step: '',
+  });
+  const [extractionError, setExtractionError] = useState(null);
+  const [extractedSkills, setExtractedSkills] = useState([]);
+  const [isSkillsExtracted, setIsSkillsExtracted] = useState(false);
+
+  // Part 5: Transactional Skill Saving States
+  const [isSavingSkills, setIsSavingSkills] = useState(false);
+  const [saveSkillsSuccess, setSaveSkillsSuccess] = useState(null);
+  const [saveSkillsError, setSaveSkillsError] = useState(null);
+  const [isSkillsSaved, setIsSkillsSaved] = useState(false);
+  const [saveSummary, setSaveSummary] = useState(null);
+
+  // Part 4 Filters & Search in Skill Review Interface
+  const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [skillTypeFilter, setSkillTypeFilter] = useState('all');
+
+  // Text Filter / Search inside Complete Extracted Text
+  const [textSearchQuery, setTextSearchQuery] = useState('');
+  const [selectedPageFilter, setSelectedPageFilter] = useState('all');
+
+  // Polling ref for cleanup
+  const pollingRef = useRef(null);
+
+  // Clear polling interval on unmount
   useEffect(() => {
-    if (!jobId || jobStatus !== 'running') {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
+
+  // Fetch extraction preview on modal open (Part 3)
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadExtractionData() {
+      setIsLoading(true);
+      setFetchError(null);
+      setSubmitError(null);
+      setSubmitSuccess(null);
+
+      try {
+        const res = await getDocumentExtractionPreview(docItem.document_id);
+        if (!isMounted) return;
+
+        setPages(res.pages || []);
+        setTotalPages(res.total_pages || (res.pages ? res.pages.length : 0));
+        setTotalCharacters(res.total_characters || 0);
+
+        // Map occupations with unique local client IDs for editing
+        const mappedOccs = (res.occupations || []).map((o, idx) => ({
+          id: `occ_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+          occupation_code: String(o.occupation_code || ''),
+          occupation_name: String(o.occupation_name || ''),
+          source_page: o.source_page ?? null,
+        }));
+
+        setOccupations(mappedOccs);
+
+        // If occupations were already submitted previously in DB, mark complete to enable Extract Skills
+        if (res.is_already_submitted) {
+          setIsSubmitted(true);
+          setIsOccupationsSaved(true);
+        } else {
+          setIsSubmitted(false);
+          setIsOccupationsSaved(false);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        setFetchError(
+          err.message ||
+            'Failed to extract text from the PDF document. It may be empty or scanned.'
+        );
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadExtractionData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [docItem.document_id]);
+
+  // Handle Input Changes for Occupations (Part 3)
+  const handleOccupationChange = (id, field, value) => {
+    setOccupations((prev) =>
+      prev.map((occ) => (occ.id === id ? { ...occ, [field]: value } : occ))
+    );
+    setValidationErrors((prev) => {
+      if (!prev[id]) return prev;
+      const updated = { ...prev };
+      delete updated[id]?.[field];
+      return updated;
+    });
+    setSubmitError(null);
+    setIsOccupationsSaved(false);
+  };
+
+  // Add a new empty occupation row (Part 3)
+  const handleAddOccupation = () => {
+    const newId = `occ_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    setOccupations((prev) => [
+      ...prev,
+      {
+        id: newId,
+        occupation_code: '',
+        occupation_name: '',
+        source_page: null,
+      },
+    ]);
+    setSubmitError(null);
+    setIsOccupationsSaved(false);
+  };
+
+  // Remove an occupation row (Part 3)
+  const handleRemoveOccupation = (id) => {
+    setOccupations((prev) => prev.filter((occ) => occ.id !== id));
+    setValidationErrors((prev) => {
+      const updated = { ...prev };
+      delete updated[id];
+      return updated;
+    });
+    setSubmitError(null);
+    setIsOccupationsSaved(false);
+  };
+
+  // Validate occupations before submission (Part 3)
+  const validateForm = () => {
+    const errors = {};
+    let hasError = false;
+
+    if (occupations.length === 0) {
+      setSubmitError('At least one occupation or target role must be listed.');
+      return false;
+    }
+
+    const seenCodes = new Set();
+
+    occupations.forEach((occ, idx) => {
+      const rowErrors = {};
+      const code = String(occ.occupation_code || '').trim();
+      const name = String(occ.occupation_name || '').trim();
+
+      if (!code) {
+        rowErrors.occupation_code = 'Occupation Code is required.';
+        hasError = true;
+      } else if (code.length > 50) {
+        rowErrors.occupation_code = 'Max 50 characters allowed.';
+        hasError = true;
+      } else if (seenCodes.has(code.toLowerCase())) {
+        rowErrors.occupation_code = 'Duplicate code in table.';
+        hasError = true;
+      } else {
+        seenCodes.add(code.toLowerCase());
+      }
+
+      if (name.length > 255) {
+        rowErrors.occupation_name = 'Max 255 characters allowed.';
+        hasError = true;
+      }
+
+      if (Object.keys(rowErrors).length > 0) {
+        errors[occ.id] = rowErrors;
+      }
+    });
+
+    setValidationErrors(errors);
+
+    if (hasError) {
+      setSubmitError(
+        'Please correct the highlighted errors in the occupation table before submitting.'
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  // Submit Occupations to Backend (Part 3)
+  const handleSubmitOccupations = async () => {
+    if (isSubmitting || (isSubmitted && isOccupationsSaved)) return;
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    try {
+      const payload = occupations.map((occ) => ({
+        occupation_code: String(occ.occupation_code).trim(),
+        occupation_name: String(occ.occupation_name).trim(),
+        source_page: occ.source_page ?? null,
+      }));
+
+      const res = await saveDocumentOccupationsBatch(
+        docItem.document_id,
+        payload
+      );
+
+      setSubmitSuccess(
+        res.message || 'Occupations and associations saved successfully!'
+      );
+      setIsSubmitted(true);
+      setIsOccupationsSaved(true);
+
+      if (onSuccess) onSuccess();
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to save occupations. Please retry.');
+      setIsOccupationsSaved(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // =========================================================================
+  // PART 4: GEMINI SKILL EXTRACTION & REVIEW HANDLERS
+  // =========================================================================
+
+  const handleStartSkillExtraction = async () => {
+    if (!isSubmitted) return;
+
+    // Switch to skills tab immediately
+    setActiveTab('skills');
+    setIsExtractingSkills(true);
+    setExtractionError(null);
+    setExtractionProgress({
+      windows_done: 0,
+      total_windows: 0,
+      current_step: 'Initiating Gemini extraction...',
+    });
+
+    try {
+      // Start skill extraction background job
+      const startRes = await startSkillExtraction(docItem.document_id, false);
+      const jobId = startRes.job_id;
+      setExtractionJobId(jobId);
+
+      // Start polling for extraction progress
+      if (pollingRef.current) clearInterval(pollingRef.current);
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await getExtractionJobStatus(jobId);
+
+          if (statusRes.progress) {
+            setExtractionProgress(statusRes.progress);
+          }
+
+          if (
+            statusRes.status === 'completed' ||
+            statusRes.status === 'completed_with_warnings' ||
+            statusRes.status === 'done'
+          ) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+            setIsExtractingSkills(false);
+            setIsSkillsExtracted(true);
+
+            // Populate extracted skills for review with safe fallback keys
+            const rawSkills = statusRes.extracted_skills || [];
+            const mappedSkills = rawSkills.map((s, idx) => ({
+              temp_id: s.temp_id || `skill_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+              skill_name: String(s.skill_name || ''),
+              skill_type: String(s.skill_type || 'tool').toLowerCase(),
+              skill_category: String(s.skill_category || ''),
+              description: String(s.description || ''),
+              depth_cue: String(s.depth_cue || ''),
+              raw_phrase: String(s.raw_phrase || ''),
+              evidence_quote: String(s.evidence_quote || ''),
+              page_number: s.page_number ?? 1,
+              verified_page_number: s.verified_page_number ?? s.page_number ?? 1,
+              quote_validation_status: String(s.quote_validation_status || 'exact_page_match'),
+              section_name: String(s.section_name || ''),
+              confidence_score: typeof s.confidence_score === 'number' ? s.confidence_score : (s.confidence ?? 0.0),
+              aliases: Array.isArray(s.aliases) ? s.aliases : [],
+            }));
+
+            setExtractedSkills(mappedSkills);
+          } else if (statusRes.status === 'failed') {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+            setIsExtractingSkills(false);
+            setExtractionError(
+              statusRes.error || 'Skill extraction failed. Please retry.'
+            );
+          }
+        } catch (pollErr) {
+          console.error('Error polling extraction job:', pollErr);
+        }
+      }, 2000);
+    } catch (err) {
+      setIsExtractingSkills(false);
+      setExtractionError(
+        err.message || 'Failed to start skill extraction. Please retry.'
+      );
+    }
+  };
+
+  // Update a single skill field in the editable review state
+  const handleSkillChange = (tempId, field, value) => {
+    setExtractedSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.temp_id !== tempId) return skill;
+        return {
+          ...skill,
+          [field]: value,
+        };
+      })
+    );
+    setIsSkillsSaved(false);
+    setSaveSkillsError(null);
+  };
+
+  // Remove a skill completely from the review state
+  const handleRemoveSkill = (tempId) => {
+    setExtractedSkills((prev) => prev.filter((skill) => skill.temp_id !== tempId));
+    setIsSkillsSaved(false);
+    setSaveSkillsError(null);
+  };
+
+  // Part 5: Save Reviewed Skills and Evidence to Database
+  const handleSaveSkills = async () => {
+    if (isSavingSkills || isSkillsSaved) return;
+    setSaveSkillsError(null);
+    setSaveSkillsSuccess(null);
+
+    if (extractedSkills.length === 0) {
+      setSaveSkillsError('No skills available to save.');
       return;
     }
 
-    const pollJob = async () => {
-      try {
-        const job = await getExtractionJobStatus(jobId);
-        if (job.progress) setProgress(job.progress);
-
-        if (job.status === 'done') {
-          setJobStatus('done');
-          setSummary(job.summary);
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          if (!dryRun && onSuccess) onSuccess();
-        } else if (job.status === 'failed') {
-          setJobStatus('failed');
-          setErrorMessage(job.error || 'Extraction job failed.');
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
+    // Client-side pre-validation
+    let hasValidationError = false;
+    for (let i = 0; i < extractedSkills.length; i++) {
+      const s = extractedSkills[i];
+      if (!s.skill_name || !s.skill_name.trim()) {
+        setSaveSkillsError(`Skill #${i + 1} has an empty skill name. Please provide a name.`);
+        hasValidationError = true;
+        break;
       }
-    };
+      if (!s.evidence_quote || !s.evidence_quote.trim()) {
+        setSaveSkillsError(`Skill #${i + 1} ('${s.skill_name}') is missing supporting evidence.`);
+        hasValidationError = true;
+        break;
+      }
+    }
 
-    pollIntervalRef.current = setInterval(pollJob, 2500);
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
-  }, [jobId, jobStatus, dryRun, onSuccess]);
+    if (hasValidationError) return;
 
-  const handleStartExtraction = async () => {
-    setJobStatus('running');
-    setErrorMessage(null);
-    setSummary(null);
-    setProgress({ windows_done: 0, total_windows: 0, current_step: 'Submitting extraction task...' });
-
+    setIsSavingSkills(true);
     try {
-      const res = await startSkillExtraction(docItem.document_id, dryRun);
-      setJobId(res.job_id);
+      const res = await saveDocumentSkills(docItem.document_id, extractedSkills);
+      setIsSkillsSaved(true);
+      setSaveSummary(res);
+      setSaveSkillsSuccess(
+        `Skills and evidence saved successfully! (${res.new_skills_created || 0} new skills created, ${res.reused_skills_count || 0} canonical skills reused, ${res.evidence_inserted || 0} evidence rows saved).`
+      );
+
+      // Trigger parent file list refresh
+      if (onSuccess) onSuccess();
     } catch (err) {
-      setJobStatus('failed');
-      setErrorMessage(err.message || 'Failed to start skill extraction job.');
+      setSaveSkillsError(err.message || 'Failed to save skills and evidence. Please retry.');
+    } finally {
+      setIsSavingSkills(false);
     }
   };
 
-  const handleCopy = (text, idx) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedQuoteIdx(idx);
-    setTimeout(() => setCopiedQuoteIdx(null), 1800);
-  };
+  // Filter skills by search query and skill_type
+  const filteredSkills = extractedSkills.filter((skill) => {
+    if (skillTypeFilter !== 'all' && skill.skill_type !== skillTypeFilter) {
+      return false;
+    }
+    if (skillSearchQuery.trim()) {
+      const q = skillSearchQuery.trim().toLowerCase();
+      const inName = skill.skill_name?.toLowerCase().includes(q);
+      const inCategory = skill.skill_category?.toLowerCase().includes(q);
+      const inDesc = skill.description?.toLowerCase().includes(q);
+      const inPhrase = skill.raw_phrase?.toLowerCase().includes(q);
+      const inEvidence = skill.evidence_quote?.toLowerCase().includes(q);
+      const inAliases = (skill.aliases || []).some((a) => a.toLowerCase().includes(q));
+      return inName || inCategory || inDesc || inPhrase || inEvidence || inAliases;
+    }
+    return true;
+  });
 
-  const handleReset = () => {
-    setJobId(null);
-    setJobStatus('idle');
-    setSummary(null);
-    setErrorMessage(null);
-    setProgress({ windows_done: 0, total_windows: 0, current_step: '' });
+  // Calculate counts for filters
+  const skillCountsByType = {
+    all: extractedSkills.length,
+    tool: extractedSkills.filter((s) => s.skill_type === 'tool').length,
+    technique: extractedSkills.filter((s) => s.skill_type === 'technique').length,
+    concept: extractedSkills.filter((s) => s.skill_type === 'concept').length,
+    domain_knowledge: extractedSkills.filter((s) => s.skill_type === 'domain_knowledge').length,
   };
 
   if (typeof window === 'undefined' || !window.document?.body) {
     return null;
   }
 
-  const progressPercent =
-    progress.total_windows > 0
-      ? Math.min(100, Math.round((progress.windows_done / progress.total_windows) * 100))
-      : 5;
+  // Filter pages for Complete Extracted Text tab
+  const filteredPages = pages.filter((page) => {
+    if (
+      selectedPageFilter !== 'all' &&
+      page.page_number !== Number(selectedPageFilter)
+    ) {
+      return false;
+    }
+    if (textSearchQuery.trim()) {
+      return (
+        page.text
+          ?.toLowerCase()
+          .includes(textSearchQuery.trim().toLowerCase()) ||
+        String(page.page_number).includes(textSearchQuery.trim())
+      );
+    }
+    return true;
+  });
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
-      <div
-        className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl border border-[#850E35]/60 shadow-2xl text-left overflow-hidden"
-        style={{ backgroundColor: '#1C040E' }}
-      >
-        {/* Modal Top Header */}
-        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-[#850E35]/40 shrink-0 bg-[#18030C]/80">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-5xl max-h-[94vh] flex flex-col rounded-3xl border border-[#850E35]/60 shadow-2xl text-left overflow-hidden bg-[#18030C]">
+        {/* =========================================================
+            1. MODAL TOP HEADER
+        ========================================================== */}
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-[#850E35]/40 shrink-0 bg-[#200410]">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#850E35] to-[#C73659] text-white shadow-md">
               <Sparkles size={20} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h4 className="text-base sm:text-lg font-bold text-white truncate">
-                  LLM Skill Extraction
-                </h4>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-wide truncate">
+                  Extraction & Skill Review
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-[#3A1024] text-[#FFA8B8] border border-[#850E35]/60">
+                  {docItem.document_type === 'job_description'
+                    ? 'Job Description'
+                    : 'Qualification File'}
+                </span>
               </div>
-              <p className="text-xs text-[#FFBAC7]/70 truncate font-mono">
+              <p className="text-xs text-[#FFBAC7]/70 truncate font-mono mt-0.5">
                 {docItem.document_name}
               </p>
             </div>
@@ -142,393 +525,1005 @@ export default function ExtractSkillsModal({ doc, document: docProp, isOpen, onC
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors cursor-pointer shrink-0 ml-3"
+            className="rounded-xl p-2 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors cursor-pointer shrink-0 ml-3"
+            title="Close Review"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-          {/* Global Error Banner */}
-          {errorMessage && (
-            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-rose-500/40 bg-rose-950/70 text-xs text-rose-200">
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={16} className="text-rose-400 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-              {jobStatus === 'failed' && (
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="px-3 py-1 rounded-lg bg-rose-900 hover:bg-rose-800 text-white font-semibold transition-colors cursor-pointer shrink-0"
-                >
-                  Retry
-                </button>
-              )}
-            </div>
-          )}
+        {/* =========================================================
+            2. THREE-TAB SWITCHER BAR
+        ========================================================== */}
+        <div className="flex items-center justify-between px-5 pt-3 border-b border-[#850E35]/30 bg-[#16020A] shrink-0 overflow-x-auto">
+          <div className="flex items-center gap-2">
 
-          {/* =========================================================
-              VIEW 1: IDLE / CONFIGURATION STATE
-          ========================================================== */}
-          {jobStatus === 'idle' && (
-            <div className="space-y-5">
-              <div className="p-4 rounded-2xl bg-[#140209] border border-[#850E35]/40 space-y-3">
-                <h5 className="text-xs font-bold uppercase tracking-wider text-[#FFA8B8] flex items-center gap-2">
-                  <Info size={14} className="text-[#E36A6A]" />
-                  <span>Pipeline Architecture & Extraction Guardrails</span>
-                </h5>
-                <ul className="text-xs text-[#FFBAC7]/80 space-y-1.5 list-disc list-inside leading-relaxed">
-                  <li>
-                    <strong>Sequential 2-Page Windows:</strong> Context is chunked and streamed with section continuity hints.
-                  </li>
-                  <li>
-                    <strong>Deterministic Extraction:</strong> Uses official Google GenAI with temperature 0 and structured JSON schema.
-                  </li>
-                  <li>
-                    <strong>Strict Quote Verification:</strong> Quotes are normalized (Unicode NFKC, hyphenated line break repair, case-folding) and verified against page text. Unverified items are strictly rejected.
-                  </li>
-                  <li>
-                    <strong>Rate Throttled:</strong> Windows are paced ~6 seconds apart with 3-attempt exponential backoff.
-                  </li>
-                </ul>
-              </div>
+          {/* Tab 1: Complete Extracted Text (Part 3) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('text')}
+              className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs sm:text-sm font-bold tracking-wide transition-colors cursor-pointer ${
+                activeTab === 'text'
+                  ? 'border-[#C73659] text-white bg-[#220412]/50 rounded-t-lg'
+                  : 'border-transparent text-[#FFBAC7]/60 hover:text-[#FFBAC7] hover:bg-[#200410]/30 rounded-t-lg'
+              }`}
+            >
+              <FileText size={15} />
+              <span>Complete Extracted Text</span>
+              <span className="px-2 py-0.5 rounded-full bg-[#36081B] text-[11px] font-mono text-[#FFA8B8]">
+                {totalPages} pgs
+              </span>
+            </button>
+          </div>
+            {/* Tab 2: Occupation / Role (Part 3) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('occupations')}
+              className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs sm:text-sm font-bold tracking-wide transition-colors cursor-pointer ${
+                activeTab === 'occupations'
+                  ? 'border-[#C73659] text-white bg-[#220412]/50 rounded-t-lg'
+                  : 'border-transparent text-[#FFBAC7]/60 hover:text-[#FFBAC7] hover:bg-[#200410]/30 rounded-t-lg'
+              }`}
+            >
+              <Briefcase size={15} />
+              <span>Occupation / Role</span>
+              <span className="px-2 py-0.5 rounded-full bg-[#36081B] text-[11px] font-mono text-[#FFA8B8]">
+                {occupations.length}
+              </span>
+            </button>
 
-              {/* Dry Run Toggle Box */}
-              <div
-                onClick={() => setDryRun((prev) => !prev)}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                  dryRun
-                    ? 'border-[#C73659] bg-[#2D0616]'
-                    : 'border-[#850E35]/40 bg-[#140209] hover:border-[#850E35]'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="dryRunCheckbox"
-                    checked={dryRun}
-                    onChange={(e) => setDryRun(e.target.checked)}
-                    className="mt-0.5 accent-[#C73659] h-4 w-4 rounded cursor-pointer"
-                  />
-                  <div>
-                    <label
-                      htmlFor="dryRunCheckbox"
-                      className="text-xs font-bold text-white cursor-pointer select-none"
-                    >
-                      Dry Run Mode (Recommended for testing prompts & audits)
-                    </label>
-                    <p className="text-[11px] text-[#FFBAC7]/70 mt-0.5 select-none leading-relaxed">
-                      Runs the complete Gemini LLM prompt and quote verification logic without writing any records to the <code>skills</code> or <code>skill_evidence</code> tables. Returns up to 20 sample accepted skills and 10 rejected items with audit reasons.
-                    </p>
-                  </div>
-                </div>
-              </div>
+          {/* Tab 3: Extracted Skills (Part 4) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('skills')}
+              className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs sm:text-sm font-bold tracking-wide transition-colors cursor-pointer ${
+                activeTab === 'skills'
+                  ? 'border-[#F5C563] text-white bg-[#220412]/50 rounded-t-lg'
+                  : 'border-transparent text-[#FFBAC7]/60 hover:text-[#FFBAC7] hover:bg-[#200410]/30 rounded-t-lg'
+              }`}
+            >
+              <Sparkles
+                size={15}
+                className={isExtractingSkills ? 'animate-spin text-[#F5C563]' : ''}
+              />
+              <span>Skill Extraction</span>
+              <span className="px-2 py-0.5 rounded-full bg-[#36081B] text-[11px] font-mono text-[#F5C563]">
+                {isExtractingSkills ? '...' : extractedSkills.length}
+              </span>
+            </button>
 
-              {/* Start Extraction Action */}
-              <div className="pt-2 flex justify-end">
-                <Button2
-                  type="button"
-                  onClick={handleStartExtraction}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#850E35] to-[#B8194E] hover:brightness-110 shadow-lg shadow-[#850E35]/40 transition-all cursor-pointer"
-                >
-                  <Play size={14} className="fill-white" />
-                  <span>{dryRun ? 'Start Dry Run Extraction' : 'Start Live Extraction'}</span>
-                </Button2>
-              </div>
-            </div>
-          )}
+          {/* Submission / Extraction Status Pill */}
+          <div className="hidden sm:flex items-center gap-2 pb-2">
+            {isSkillsExtracted ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-semibold">
+                <CheckCircle2 size={13} className="text-emerald-400" />
+                {extractedSkills.length} Skills Extracted
+              </span>
+            ) : isSubmitted ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/60 border border-amber-500/40 text-amber-200 text-xs font-medium">
+                Occupations Saved
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#200410] border border-[#850E35]/50 text-[#FFBAC7]/60 text-xs">
+                Pending Occupation Submit
+              </span>
+            )}
+          </div>
+        </div>
 
-          {/* =========================================================
-              VIEW 2: LIVE PROGRESS STATE
-          ========================================================== */}
-          {jobStatus === 'running' && (
-            <div className="py-10 space-y-6 text-center max-w-lg mx-auto">
-              <div className="relative flex items-center justify-center">
-                <div className="h-16 w-16 rounded-full border-4 border-[#850E35]/30 border-t-[#C73659] animate-spin" />
-                <Sparkles size={24} className="absolute text-[#FFA8B8] animate-pulse" />
-              </div>
-
-              <div className="space-y-2">
-                <h5 className="text-sm font-bold text-white">
-                  {dryRun ? 'Extracting Skills (Dry Run)...' : 'Extracting & Validating Skills...'}
-                </h5>
-                <p className="text-xs text-[#FFBAC7] font-mono leading-relaxed">
-                  {progress.current_step || 'Processing document windows with Gemini...'}
+        {/* =========================================================
+            3. MAIN CONTENT BODY (TABS)
+        ========================================================== */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {/* Loading Initial State (Part 3) */}
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center p-14 space-y-4 text-center">
+              <Loader2 size={36} className="text-[#C73659] animate-spin" />
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-white">
+                  Extracting PDF text & identifying occupations...
+                </p>
+                <p className="text-xs text-[#FFBAC7]/60">
+                  Parsing pages with PyMuPDF and executing deterministic section
+                  matching without LLM.
                 </p>
               </div>
-
-              {/* Progress Bar */}
-              <div className="space-y-1.5 text-left">
-                <div className="flex justify-between text-xs font-mono text-[#FFBAC7]/70">
-                  <span>
-                    Window {progress.windows_done} of {progress.total_windows || '?'}
-                  </span>
-                  <span>{progressPercent}%</span>
-                </div>
-                <div className="w-full h-2.5 rounded-full bg-[#140209] border border-[#850E35]/40 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[#850E35] via-[#C73659] to-[#FFA8B8] transition-all duration-300"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-              </div>
-
-              <p className="text-[11px] text-[#FFBAC7]/50">
-                Rate-throttled at ~6s per window to ensure reliable execution without API quota drops.
-              </p>
             </div>
           )}
 
-          {/* =========================================================
-              VIEW 3: COMPLETED / SUMMARY STATE
-          ========================================================== */}
-          {jobStatus === 'done' && summary && (
-            <div className="space-y-5">
-              {/* Top Status Banner */}
-              <div
-                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
-                  summary.dry_run
-                    ? 'bg-[#2D0616] border-[#C73659]/70 text-white'
-                    : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle2
-                    size={22}
-                    className={summary.dry_run ? 'text-[#FFA8B8]' : 'text-emerald-400'}
-                  />
-                  <div>
-                    <h5 className="text-xs font-extrabold uppercase tracking-wider">
-                      {summary.dry_run ? 'Dry Run Complete — Zero DB Rows Modified' : 'Live Skill Extraction Successful!'}
-                    </h5>
-                    <p className="text-xs text-[#FFBAC7] mt-0.5">
-                      Analyzed {summary.pages_total} pages across {summary.windows_total} windows in{' '}
-                      {summary.duration_seconds}s.
-                    </p>
-                  </div>
-                </div>
+          {/* Initial Fetch Error State */}
+          {!isLoading && fetchError && (
+            <div className="rounded-2xl border border-rose-500/50 bg-rose-950/80 p-6 space-y-3">
+              <div className="flex items-center gap-2.5 text-rose-200 font-bold text-sm">
+                <AlertCircle size={18} className="text-rose-400 shrink-0" />
+                <span>Text Extraction Failed</span>
               </div>
-
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                    LLM Candidates
-                  </p>
-                  <p className="text-xl font-extrabold text-white">
-                    {summary.items_returned_by_llm}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-emerald-400">
-                    {summary.dry_run ? 'Verified Samples' : 'Evidence Inserted'}
-                  </p>
-                  <p className="text-xl font-extrabold text-emerald-400">
-                    {summary.dry_run ? summary.sample_accepted_items?.length : summary.evidence_inserted}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                    New Skills Added
-                  </p>
-                  <p className="text-xl font-extrabold text-white">
-                    {summary.new_skills_created}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
-                    Duplicates Skipped
-                  </p>
-                  <p className="text-xl font-extrabold text-amber-300">
-                    {summary.duplicates_skipped}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-rose-400">
-                    Quote Not Found
-                  </p>
-                  <p className="text-xl font-extrabold text-rose-300">
-                    {summary.items_rejected_quote_not_found}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-rose-400">
-                    Invalid Fields
-                  </p>
-                  <p className="text-xl font-extrabold text-rose-300">
-                    {summary.items_rejected_invalid_fields}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                    Windows Processed
-                  </p>
-                  <p className="text-xl font-extrabold text-white">
-                    {summary.windows_processed} / {summary.windows_total}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                    Elapsed Time
-                  </p>
-                  <p className="text-xl font-extrabold text-white font-mono">
-                    {summary.duration_seconds}s
-                  </p>
-                </div>
-              </div>
-
-              {/* Sample Tabs */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 border-b border-[#850E35]/40 pb-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('accepted')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                      activeTab === 'accepted'
-                        ? 'bg-[#850E35] text-white shadow-sm'
-                        : 'text-[#FFBAC7]/70 hover:text-white'
-                    }`}
-                  >
-                    Sample Accepted Skills ({summary.sample_accepted_items?.length || 0})
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('rejected')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                      activeTab === 'rejected'
-                        ? 'bg-rose-950 text-rose-200 border border-rose-500/40 shadow-sm'
-                        : 'text-[#FFBAC7]/70 hover:text-white'
-                    }`}
-                  >
-                    Sample Rejected Items ({summary.sample_rejected_items?.length || 0})
-                  </button>
-                </div>
-
-                {/* Tab 1: Accepted Skills */}
-                {activeTab === 'accepted' && (
-                  <div className="space-y-2.5 max-h-[38vh] overflow-y-auto pr-1">
-                    {summary.sample_accepted_items?.length === 0 ? (
-                      <p className="text-xs text-[#FFBAC7]/60 py-6 text-center">
-                        No accepted skills captured in sample list.
-                      </p>
-                    ) : (
-                      summary.sample_accepted_items.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3.5 rounded-2xl bg-[#140209] border border-[#850E35]/40 space-y-2 text-xs"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-sm">
-                                {item.skill_name}
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                                  SKILL_TYPE_BADGES[item.skill_type] || 'bg-[#240614] text-white'
-                                }`}
-                              >
-                                {item.skill_type}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2 text-[#FFBAC7]/70 font-mono text-[11px]">
-                              <span>Page {item.page_number}</span>
-                              <span>•</span>
-                              <span>Confidence: {item.confidence}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-[11px] text-[#FFA8B8]">
-                            <span>
-                              Verb / Depth Cue: <code className="text-white font-mono">{item.depth_cue}</code>
-                            </span>
-                            <span>•</span>
-                            <span className="truncate max-w-sm">
-                              Section: {item.section_name}
-                            </span>
-                          </div>
-
-                          <div className="relative p-2.5 rounded-xl bg-[#0F0107] border border-[#850E35]/25 text-[#FFBAC7]/90 font-mono text-[11px] leading-relaxed">
-                            <p>"{item.evidence_quote}"</p>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(item.evidence_quote, idx)}
-                              className="absolute top-2 right-2 text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
-                              title="Copy quote"
-                            >
-                              {copiedQuoteIdx === idx ? (
-                                <Check size={13} className="text-emerald-400" />
-                              ) : (
-                                <Copy size={13} />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* Tab 2: Rejected Items */}
-                {activeTab === 'rejected' && (
-                  <div className="space-y-2.5 max-h-[38vh] overflow-y-auto pr-1">
-                    {summary.sample_rejected_items?.length === 0 ? (
-                      <p className="text-xs text-emerald-300 py-6 text-center">
-                        Zero items rejected! All candidate quotes were verified cleanly on page text.
-                      </p>
-                    ) : (
-                      summary.sample_rejected_items.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 space-y-2 text-xs"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-bold text-white">
-                              {item.item?.skill_name || 'Candidate Skill'}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950 border border-rose-500/50 text-rose-300">
-                              Rejected
-                            </span>
-                          </div>
-
-                          <p className="text-rose-200 text-xs font-semibold">
-                            Reason: {item.reason}
-                          </p>
-
-                          {item.item?.evidence_quote && (
-                            <p className="p-2 rounded-xl bg-black/40 border border-rose-500/20 text-[#FFBAC7]/70 font-mono text-[11px]">
-                              Quote: "{item.item.evidence_quote}"
-                            </p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+              <p className="text-xs text-rose-200/90 leading-relaxed font-mono">
+                {fetchError}
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 rounded-xl bg-rose-900/60 hover:bg-rose-900 border border-rose-500/50 text-xs font-bold text-white transition-colors cursor-pointer"
+                >
+                  Reload Document
+                </button>
               </div>
             </div>
+          )}
+
+          {!isLoading && !fetchError && (
+            <>
+              {/* Global Error/Success Alerts */}
+              {submitError && (
+                <div className="flex items-center gap-2.5 p-3.5 rounded-xl border border-rose-500/50 bg-rose-950/80 text-rose-200 text-xs font-medium animate-in fade-in duration-200">
+                  <AlertCircle size={16} className="text-rose-400 shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
+
+              {submitSuccess && (
+                <div className="flex items-center gap-2.5 p-3.5 rounded-xl border border-emerald-500/50 bg-emerald-950/80 text-emerald-200 text-xs font-medium animate-in fade-in duration-200">
+                  <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                  <span>{submitSuccess}</span>
+                </div>
+              )}
+
+              {/* =====================================================
+                  TAB 1: EXTRACTED SKILLS (PART 4 & PART 5)
+              ====================================================== */}
+              {activeTab === 'skills' && (
+                <div className="space-y-4">
+                  {/* Save Skills Success Alert (Part 5) */}
+                  {saveSkillsSuccess && (
+                    <div className="flex items-center gap-2.5 p-3.5 rounded-xl border border-emerald-500/50 bg-emerald-950/80 text-emerald-200 text-xs font-medium animate-in fade-in duration-200">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>{saveSkillsSuccess}</span>
+                    </div>
+                  )}
+
+                  {/* Save Skills Error Alert (Part 5) */}
+                  {saveSkillsError && (
+                    <div className="flex items-center gap-2.5 p-3.5 rounded-xl border border-rose-500/50 bg-rose-950/80 text-rose-200 text-xs font-medium animate-in fade-in duration-200">
+                      <AlertCircle size={16} className="text-rose-400 shrink-0" />
+                      <span>{saveSkillsError}</span>
+                    </div>
+                  )}
+
+                  {/* State 1: In-Flight Skill Extraction Progress */}
+                  {isExtractingSkills && (
+                    <div className="p-8 rounded-3xl bg-[#200410] border border-[#F5C563]/40 space-y-6 text-center shadow-xl">
+                      <div className="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-[#F5C563] to-[#D99B26] text-[#2B0712] shadow-lg animate-pulse">
+                        <Sparkles size={28} />
+                      </div>
+
+                      <div className="space-y-1.5 max-w-lg mx-auto">
+                        <h4 className="text-base font-bold text-white tracking-wide">
+                          Extracting Technical Skills with Gemini
+                        </h4>
+                        <p className="text-xs text-[#FFBAC7]/70 leading-relaxed font-mono">
+                          {extractionProgress.current_step ||
+                            'Analyzing PDF page windows and verifying source evidence...'}
+                        </p>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="max-w-md mx-auto space-y-2">
+                        <div className="h-2.5 w-full bg-[#120208] rounded-full overflow-hidden border border-[#850E35]/40 p-0.5">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#F5C563] to-[#E8B145] rounded-full transition-all duration-300 shadow-sm"
+                            style={{
+                              width: `${
+                                extractionProgress.total_windows > 0
+                                  ? Math.min(
+                                      100,
+                                      Math.round(
+                                        (extractionProgress.windows_done /
+                                          extractionProgress.total_windows) *
+                                          100
+                                      )
+                                    )
+                                  : 10
+                              }%`,
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] font-mono text-[#FFBAC7]/60">
+                          <span>
+                            Window {extractionProgress.windows_done} of{' '}
+                            {extractionProgress.total_windows || '?'}
+                          </span>
+                          <span>
+                            {extractionProgress.total_windows > 0
+                              ? `${Math.round(
+                                  (extractionProgress.windows_done /
+                                    extractionProgress.total_windows) *
+                                    100
+                                )}%`
+                              : 'Starting...'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-[#FFBAC7]/50 italic">
+                        Preserving exact quotations, character matching, and confidence scores across 2-page windows.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* State 2: Extraction Failure with Retry Button */}
+                  {!isExtractingSkills && extractionError && (
+                    <div className="rounded-2xl border border-rose-500/50 bg-rose-950/80 p-6 space-y-3 text-left">
+                      <div className="flex items-center gap-2.5 text-rose-200 font-bold text-sm">
+                        <AlertCircle size={18} className="text-rose-400 shrink-0" />
+                        <span>Skill Extraction Error</span>
+                      </div>
+                      <p className="text-xs text-rose-200/90 leading-relaxed font-mono">
+                        {extractionError}
+                      </p>
+                      <div className="pt-2 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleStartSkillExtraction}
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
+                        >
+                          Retry Skill Extraction
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('occupations')}
+                          className="px-4 py-2 rounded-xl bg-[#200410] border border-[#850E35]/60 hover:bg-[#36081B] text-xs font-semibold text-white transition-colors cursor-pointer"
+                        >
+                          Review Occupations
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State 3: Not Started Yet Prompt */}
+                  {!isExtractingSkills && !extractionError && !isSkillsExtracted && (
+                    <div className="p-8 rounded-3xl bg-[#200410] border border-[#850E35]/40 text-center space-y-4">
+                      <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-[#36081B] text-[#F5C563] border border-[#850E35]/60 shadow-md">
+                        <Sparkles size={24} />
+                      </div>
+                      <div className="space-y-1.5 max-w-md mx-auto">
+                        <h4 className="text-base font-bold text-white">
+                          Ready for Technical Skill Extraction
+                        </h4>
+                        <p className="text-xs text-[#FFBAC7]/70 leading-relaxed">
+                          Occupations have been reviewed and submitted. You can now launch
+                          Gemini 2-page window extraction to extract tools, techniques, concepts,
+                          and domain knowledge with verified evidence quotes.
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleStartSkillExtraction}
+                          disabled={!isSubmitted}
+                          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] via-[#E8B145] to-[#D99B26] hover:brightness-105 border border-[#FCE19C]/60 text-[#2B0712] text-xs font-extrabold tracking-wide shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Play size={15} />
+                          <span>Start Skill Extraction</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State 4: Extraction Succeeded - Editable Review Interface */}
+                  {!isExtractingSkills && isSkillsExtracted && (
+                    <div className="space-y-4">
+                      {/* Filter & Search Bar */}
+                      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#200410] border border-[#850E35]/40 text-xs">
+                        {/* Search Input */}
+                        <div className="relative flex-1">
+                          <Search
+                            size={14}
+                            className="absolute left-3 top-2.5 text-[#FFBAC7]/50 pointer-events-none"
+                          />
+                          <input
+                            type="text"
+                            value={skillSearchQuery}
+                            onChange={(e) => setSkillSearchQuery(e.target.value)}
+                            placeholder="Filter skills by name, evidence, category, or alias..."
+                            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-white placeholder:text-[#FFBAC7]/40 text-xs focus:outline-none focus:border-[#C73659]"
+                          />
+                        </div>
+
+                        {/* Type Filter Pills */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+                          {[
+                            { key: 'all', label: 'All', count: skillCountsByType.all },
+                            { key: 'tool', label: 'Tool', count: skillCountsByType.tool },
+                            { key: 'technique', label: 'Technique', count: skillCountsByType.technique },
+                            { key: 'concept', label: 'Concept', count: skillCountsByType.concept },
+                            { key: 'domain_knowledge', label: 'Domain', count: skillCountsByType.domain_knowledge },
+                          ].map((t) => (
+                            <button
+                              key={t.key}
+                              type="button"
+                              onClick={() => setSkillTypeFilter(t.key)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                                skillTypeFilter === t.key
+                                  ? 'bg-[#C73659] text-white shadow-sm'
+                                  : 'bg-[#18030C] text-[#FFBAC7]/60 hover:text-white border border-[#850E35]/40'
+                              }`}
+                            >
+                              {t.label}{' '}
+                              <span className="opacity-75 font-mono text-[10px]">
+                                ({t.count})
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Review State Summary Header */}
+                      <div className="flex items-center justify-between px-1 text-xs text-[#FFBAC7]/70">
+                        <span>
+                          Showing <strong className="text-white">{filteredSkills.length}</strong> of{' '}
+                          <strong className="text-white">{extractedSkills.length}</strong> extracted skills
+                        </span>
+                        <span className="text-[11px] font-mono text-[#F5C563] bg-[#2E0818] border border-[#850E35]/50 px-2.5 py-0.5 rounded-full">
+                          Temporary Review State
+                        </span>
+                      </div>
+
+                      {/* Empty Skills State */}
+                      {filteredSkills.length === 0 && (
+                        <div className="p-10 rounded-2xl bg-[#200410]/70 border border-[#850E35]/30 text-center space-y-2">
+                          <p className="text-sm font-semibold text-white">
+                            No skills found matching your filter criteria.
+                          </p>
+                          <p className="text-xs text-[#FFBAC7]/50">
+                            Clear your search term or switch to another skill type filter.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Editable Skills Cards List */}
+                      <div className="space-y-4">
+                        {filteredSkills.map((skill, index) => {
+                          const typeBadgeColor = {
+                            tool: 'bg-cyan-950/70 border-cyan-500/50 text-cyan-300',
+                            technique: 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300',
+                            concept: 'bg-purple-950/70 border-purple-500/50 text-purple-300',
+                            domain_knowledge: 'bg-amber-950/70 border-amber-500/50 text-amber-300',
+                          }[skill.skill_type] || 'bg-[#36081B] border-[#850E35]/60 text-[#FFA8B8]';
+
+                          return (
+                            <div
+                              key={skill.temp_id}
+                              className="rounded-2xl border border-[#850E35]/50 bg-[#200410] p-4 sm:p-5 space-y-3.5 shadow-md hover:border-[#C73659]/70 transition-all text-left"
+                            >
+                              {/* Header Row: Skill Name, Skill Type Selector, Read-Only Confidence, Delete Action */}
+                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-[#850E35]/30">
+                                <div className="flex-1 w-full flex items-center gap-2">
+                                  <span className="text-xs font-mono text-[#FFBAC7]/40 w-6 shrink-0">
+                                    #{index + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={skill.skill_name}
+                                    onChange={(e) =>
+                                      handleSkillChange(skill.temp_id, 'skill_name', e.target.value)
+                                    }
+                                    placeholder="Canonical Skill Name"
+                                    className="flex-1 px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/60 text-white font-bold text-sm tracking-wide focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                  {/* Skill Type Dropdown (Strictly 4 Allowed Types) */}
+                                  <div className="relative shrink-0">
+                                    <select
+                                      value={skill.skill_type}
+                                      onChange={(e) =>
+                                        handleSkillChange(skill.temp_id, 'skill_type', e.target.value)
+                                      }
+                                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border focus:outline-none cursor-pointer ${typeBadgeColor}`}
+                                    >
+                                      <option value="tool" className="bg-[#18030C] text-cyan-300">
+                                        tool
+                                      </option>
+                                      <option value="technique" className="bg-[#18030C] text-emerald-300">
+                                        technique
+                                      </option>
+                                      <option value="concept" className="bg-[#18030C] text-purple-300">
+                                        concept
+                                      </option>
+                                      <option value="domain_knowledge" className="bg-[#18030C] text-amber-300">
+                                        domain_knowledge
+                                      </option>
+                                    </select>
+                                  </div>
+
+                                  {/* Read-Only Confidence Score Badge */}
+                                  <div
+                                    title="Temporary review confidence score from LLM (Read-only)"
+                                    className="px-2.5 py-1 rounded-xl bg-[#280516] border border-[#850E35]/60 text-[#F5C563] text-xs font-mono font-bold shrink-0 select-none cursor-default"
+                                  >
+                                    {(skill.confidence_score * 100).toFixed(1)}%
+                                  </div>
+
+                                  {/* Delete Skill Action (No approve/reject buttons) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveSkill(skill.temp_id)}
+                                    title="Remove this skill entirely"
+                                    className="p-1.5 rounded-lg text-[#FFBAC7]/40 hover:text-rose-300 hover:bg-rose-950/60 transition-colors cursor-pointer shrink-0"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Details Grid: Skill Category, Depth Cue, Raw Phrase */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                    Skill Category
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={skill.skill_category || ''}
+                                    onChange={(e) =>
+                                      handleSkillChange(skill.temp_id, 'skill_category', e.target.value)
+                                    }
+                                    placeholder="e.g. Network Security"
+                                    className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                    Depth Cue (Action Verb)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={skill.depth_cue || ''}
+                                    onChange={(e) =>
+                                      handleSkillChange(skill.temp_id, 'depth_cue', e.target.value)
+                                    }
+                                    placeholder="e.g. configure, implement"
+                                    className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                    Raw Phrase in Source
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={skill.raw_phrase || ''}
+                                    onChange={(e) =>
+                                      handleSkillChange(skill.temp_id, 'raw_phrase', e.target.value)
+                                    }
+                                    placeholder="e.g. configuring Docker containers"
+                                    className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Description */}
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                  Description
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={skill.description || ''}
+                                  onChange={(e) =>
+                                    handleSkillChange(skill.temp_id, 'description', e.target.value)
+                                  }
+                                  placeholder="Brief technical description of what this skill entails..."
+                                  className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-white/90 focus:outline-none focus:border-[#C73659] leading-relaxed resize-y"
+                                />
+                              </div>
+
+                              {/* Aliases */}
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                  Aliases (comma-separated acronyms / technical synonyms)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={(skill.aliases || []).join(', ')}
+                                  onChange={(e) => {
+                                    const parsed = e.target.value
+                                      .split(',')
+                                      .map((a) => a.trim())
+                                      .filter(Boolean);
+                                    handleSkillChange(skill.temp_id, 'aliases', parsed);
+                                  }}
+                                  placeholder="e.g. K8s, Kube, Container Orchestration"
+                                  className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659]"
+                                />
+                              </div>
+
+                              {/* Supporting Evidence Quote & Verification Status */}
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <label className="font-semibold text-[#FFBAC7]/70">
+                                    Supporting Evidence Quote
+                                  </label>
+
+                                  {/* Verification Status Pill */}
+                                  {skill.quote_validation_status === 'page_mismatch' ||
+                                  (skill.verified_page_number &&
+                                    skill.verified_page_number !== skill.page_number) ? (
+                                    <span className="inline-flex items-center gap-1 text-amber-300 font-mono text-[10px] bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded-md">
+                                      <Info size={11} />
+                                      Stated: p.{skill.page_number} → Verified: p.{skill.verified_page_number}
+                                    </span>
+                                  ) : skill.quote_validation_status === 'exact_page_match' ? (
+                                    <span className="inline-flex items-center gap-1 text-emerald-300 font-mono text-[10px] bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-md">
+                                      <CheckCircle2 size={11} />
+                                      Verified on p.{skill.page_number}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-rose-300 font-mono text-[10px] bg-rose-950/60 border border-rose-500/40 px-2 py-0.5 rounded-md">
+                                      <AlertCircle size={11} />
+                                      Quote unverified in text
+                                    </span>
+                                  )}
+                                </div>
+
+                                <textarea
+                                  rows={2}
+                                  value={skill.evidence_quote}
+                                  onChange={(e) =>
+                                    handleSkillChange(skill.temp_id, 'evidence_quote', e.target.value)
+                                  }
+                                  placeholder="Exact contiguous quotation from source PDF..."
+                                  className="w-full px-3 py-1.5 rounded-xl bg-[#120208] border border-[#850E35]/50 text-xs text-white font-mono leading-relaxed focus:outline-none focus:border-[#C73659] resize-y"
+                                />
+                              </div>
+
+                              {/* Source Page & Section Name */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                    Source Page
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={totalPages || 999}
+                                    value={skill.page_number}
+                                    onChange={(e) =>
+                                      handleSkillChange(
+                                        skill.temp_id,
+                                        'page_number',
+                                        Number(e.target.value) || 1
+                                      )
+                                    }
+                                    className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-white font-mono focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                  <label className="block text-[11px] font-semibold text-[#FFBAC7]/70 mb-1">
+                                    Section / NOS Name
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={skill.section_name || ''}
+                                    onChange={(e) =>
+                                      handleSkillChange(skill.temp_id, 'section_name', e.target.value)
+                                    }
+                                    placeholder="e.g. NOS 1: Network Configuration | Knowledge"
+                                    className="w-full px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659]"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* =====================================================
+                  TAB 2: COMPLETE EXTRACTED TEXT (PART 3)
+              ====================================================== */}
+              {activeTab === 'text' && (
+                <div className="space-y-4">
+                  {/* Controls Bar: Search & Page Filter */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-[#200410] border border-[#850E35]/40 text-xs">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <div className="relative flex-1 sm:w-64">
+                        <Search
+                          size={14}
+                          className="absolute left-3 top-2.5 text-[#FFBAC7]/50 pointer-events-none"
+                        />
+                        <input
+                          type="text"
+                          value={textSearchQuery}
+                          onChange={(e) => setTextSearchQuery(e.target.value)}
+                          placeholder="Search in extracted text..."
+                          className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-white placeholder:text-[#FFBAC7]/40 text-xs focus:outline-none focus:border-[#C73659]"
+                        />
+                      </div>
+
+                      <select
+                        value={selectedPageFilter}
+                        onChange={(e) => setSelectedPageFilter(e.target.value)}
+                        className="px-3 py-1.5 rounded-xl bg-[#140209] border border-[#850E35]/40 text-xs text-[#FFA8B8] focus:outline-none focus:border-[#C73659] cursor-pointer"
+                      >
+                        <option value="all">All Pages ({totalPages})</option>
+                        {pages.map((p) => (
+                          <option key={p.page_number} value={p.page_number}>
+                            Page {p.page_number} ({p.char_count} chars)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="text-[11px] font-mono text-[#FFBAC7]/60">
+                      Total Characters:{' '}
+                      <strong className="text-white">
+                        {totalCharacters.toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Page-by-page display */}
+                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+                    {filteredPages.length === 0 ? (
+                      <div className="p-8 rounded-2xl bg-[#200410]/60 border border-[#850E35]/30 text-center space-y-2">
+                        <p className="text-sm font-semibold text-white">
+                          No matching text found.
+                        </p>
+                        <p className="text-xs text-[#FFBAC7]/50">
+                          Try searching for a different word or select 'All Pages'.
+                        </p>
+                      </div>
+                    ) : (
+                      filteredPages.map((page) => (
+                        <div
+                          key={page.page_number}
+                          className="rounded-2xl border border-[#850E35]/40 bg-[#1F0412] overflow-hidden"
+                        >
+                          <div className="flex items-center justify-between px-4 py-2 border-b border-[#850E35]/30 bg-[#260516]">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#850E35] text-[10px] font-bold text-white">
+                                {page.page_number}
+                              </span>
+                              <span className="text-xs font-bold text-white">
+                                Page {page.page_number}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-mono text-[#FFBAC7]/60">
+                              {page.char_count} chars
+                            </span>
+                          </div>
+
+                          <div className="p-4 text-xs font-mono text-white/90 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto select-text">
+                            {page.text || (
+                              <span className="italic text-[#FFBAC7]/40">
+                                (Empty page or no printable text detected)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* =====================================================
+                  TAB 3: OCCUPATION / ROLE (PART 3)
+              ====================================================== */}
+              {activeTab === 'occupations' && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#200410] border border-[#850E35]/40 text-xs">
+                    <div className="space-y-0.5">
+                      <h4 className="font-bold text-white tracking-wide">
+                        Extracted Occupations & Classification Codes
+                      </h4>
+                      <p className="text-[11px] text-[#FFBAC7]/70">
+                        {docItem.document_type === 'job_description'
+                          ? 'Extracted job title/target roles for this document. Verify or add codes.'
+                          : 'Deterministic extraction from Section 1, Field 14 (NCO/ISCO codes).'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleAddOccupation}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#850E35] hover:bg-[#A81545] border border-[#C73659]/60 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <Plus size={14} />
+                      <span>Add Occupation</span>
+                    </button>
+                  </div>
+
+                  {/* Occupations Table */}
+                  <div className="overflow-x-auto rounded-2xl border border-[#850E35]/40 bg-[#1D0310]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#2B0617] border-b border-[#850E35]/40 text-[#FFA8B8] font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="py-3 px-3 w-12 text-center">#</th>
+                          <th className="py-3 px-4 w-44">
+                            Occupation Code <span className="text-rose-400">*</span>
+                          </th>
+                          <th className="py-3 px-4">Occupation Name / Title</th>
+                          <th className="py-3 px-3 w-16 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#850E35]/25">
+                        {occupations.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={5}
+                              className="py-8 text-center text-xs text-[#FFBAC7]/60"
+                            >
+                              No occupations found. Click{' '}
+                              <strong className="text-white">Add Occupation</strong> to
+                              insert one.
+                            </td>
+                          </tr>
+                        ) : (
+                          occupations.map((occ, idx) => {
+                            const rowErrors = validationErrors[occ.id] || {};
+                            return (
+                              <tr
+                                key={occ.id}
+                                className="hover:bg-[#250414] transition-colors"
+                              >
+                                <td className="py-2.5 px-3 text-center text-[#FFBAC7]/50 font-mono text-[11px]">
+                                  {idx + 1}
+                                </td>
+
+                                {/* Occupation Code */}
+                                <td className="py-2.5 px-4 align-top">
+                                  <input
+                                    type="text"
+                                    value={occ.occupation_code}
+                                    onChange={(e) =>
+                                      handleOccupationChange(
+                                        occ.id,
+                                        'occupation_code',
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 2522.0201"
+                                    className={`w-full px-2.5 py-1.5 rounded-lg bg-[#140209] border text-xs font-mono font-bold text-white focus:outline-none transition-colors ${
+                                      rowErrors.occupation_code
+                                        ? 'border-rose-500 bg-rose-950/20'
+                                        : 'border-[#850E35]/50 focus:border-[#C73659]'
+                                    }`}
+                                  />
+                                  {rowErrors.occupation_code && (
+                                    <p className="text-[10px] text-rose-400 mt-1 font-sans">
+                                      {rowErrors.occupation_code}
+                                    </p>
+                                  )}
+                                </td>
+
+                                {/* Occupation Name */}
+                                <td className="py-2.5 px-4 align-top">
+                                  <input
+                                    type="text"
+                                    value={occ.occupation_name}
+                                    onChange={(e) =>
+                                      handleOccupationChange(
+                                        occ.id,
+                                        'occupation_name',
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. Security Analyst (or leave empty if unresolved)"
+                                    className={`w-full px-2.5 py-1.5 rounded-lg bg-[#140209] border text-xs text-white focus:outline-none transition-colors ${
+                                      rowErrors.occupation_name
+                                        ? 'border-rose-500 bg-rose-950/20'
+                                        : 'border-[#850E35]/50 focus:border-[#C73659]'
+                                    }`}
+                                  />
+                                  {rowErrors.occupation_name && (
+                                    <p className="text-[10px] text-rose-400 mt-1 font-sans">
+                                      {rowErrors.occupation_name}
+                                    </p>
+                                  )}
+                                </td>
+
+                                {/* Action */}
+                                <td className="py-2.5 px-3 text-center align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveOccupation(occ.id)}
+                                    title="Remove this occupation row"
+                                    className="p-1.5 rounded-lg text-[#FFBAC7]/40 hover:text-rose-300 hover:bg-rose-950/60 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 border-t border-[#850E35]/40 flex justify-end bg-[#18030C]/80 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl text-xs font-semibold text-[#FFBAC7] hover:text-white bg-[#18030C] hover:bg-[#250514] border border-[#850E35]/40 transition-colors cursor-pointer"
-          >
-            Close
-          </button>
+        {/* =========================================================
+            4. MODAL FOOTER BAR WITH CONTEXTUAL ACTIONS
+        ========================================================== */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 sm:p-5 border-t border-[#850E35]/40 bg-[#200410] shrink-0">
+          {/* Status info on the left */}
+          <div className="flex items-center gap-2 text-xs text-[#FFBAC7]/70">
+            {activeTab === 'skills' ? (
+              isSkillsSaved ? (
+                <span className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  <span>
+                    Saved: {saveSummary?.new_skills_created ?? 0} new • {saveSummary?.reused_skills_count ?? 0} reused • {saveSummary?.evidence_inserted ?? 0} evidence
+                  </span>
+                </span>
+              ) : isSkillsExtracted ? (
+                <span className="flex items-center gap-1.5 text-[#F5C563] font-semibold">
+                  <BookmarkCheck size={14} className="text-[#F5C563]" />
+                  <span>Reviewing {extractedSkills.length} skills • Ready to save</span>
+                </span>
+              ) : isExtractingSkills ? (
+                <span className="flex items-center gap-1.5 text-[#F5C563] font-semibold">
+                  <Loader2 size={14} className="animate-spin text-[#F5C563]" />
+                  <span>Extraction in progress...</span>
+                </span>
+              ) : (
+                <span>Submit occupations to unlock skill extraction.</span>
+              )
+            ) : isSubmitted ? (
+              isOccupationsSaved ? (
+                <span className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  <span>Occupations saved • Ready for Skill Extraction</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                  <AlertCircle size={14} className="text-amber-400" />
+                  <span>Unsaved occupation changes • Ready to update</span>
+                </span>
+              )
+            ) : (
+              <span>Submit reviewed occupations to unlock Skill Extraction.</span>
+            )}
+          </div>
+
+          {/* Action buttons on the right */}
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            {activeTab === 'skills' ? (
+              <>
+                {/* When on Skills Tab: Primary Action is "Save Skills" */}
+                {extractionError && (
+                  <button
+                    type="button"
+                    onClick={handleStartSkillExtraction}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
+                  >
+                    <RefreshCw size={14} />
+                    <span>Retry Extraction</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveSkills}
+                    disabled={isSavingSkills || isSkillsSaved || !isSkillsExtracted || extractedSkills.length === 0}
+                    title={
+                      isSkillsSaved
+                        ? 'All reviewed skills and evidence have been saved to the database.'
+                        : 'Save reviewed skills and evidence to database'
+                    }
+                    className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-extrabold tracking-wide shadow-md transition-all ${
+                      isSkillsSaved
+                        ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 opacity-90 cursor-not-allowed pointer-events-none shadow-none'
+                        : isSavingSkills
+                        ? 'bg-emerald-600/80 border border-emerald-400/60 text-white opacity-70 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:brightness-110 border border-emerald-300/60 text-slate-950 shadow-emerald-950/40 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                    }`}
+                  >
+                    {isSavingSkills ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin text-white" />
+                        <span>Saving Skills...</span>
+                      </>
+                    ) : isSkillsSaved ? (
+                      <>
+                        <CheckCircle2 size={15} className="text-emerald-400" />
+                        <span>Saved to Database</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={15} />
+                        <span>Save Skills</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Primary Action 1: Submit / Update Occupations */}
+                <button
+                  type="button"
+                  onClick={handleSubmitOccupations}
+                  disabled={
+                    isSubmitting ||
+                    isLoading ||
+                    Boolean(fetchError) ||
+                    (isSubmitted && isOccupationsSaved)
+                  }
+                  title={
+                    isSubmitted && isOccupationsSaved
+                      ? 'Occupations are saved to database. Make changes to update.'
+                      : isSubmitted
+                      ? 'Update occupations in database'
+                      : 'Submit reviewed occupations to database'
+                  }
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold tracking-wide shadow-md transition-all ${
+                    isSubmitted && isOccupationsSaved
+                      ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 opacity-90 cursor-not-allowed pointer-events-none shadow-none'
+                      : isSubmitting
+                      ? 'bg-[#850E35]/80 border border-[#C73659]/60 text-white opacity-70 cursor-not-allowed'
+                      : 'bg-[#850E35] hover:bg-[#A81545] border border-[#C73659]/60 text-white shadow-md active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin text-white" />
+                      <span>Saving Occupations...</span>
+                    </>
+                  ) : isSubmitted && isOccupationsSaved ? (
+                    <>
+                      <CheckCircle2 size={15} className="text-emerald-400" />
+                      <span>Occupations Saved</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} />
+                      <span>{isSubmitted ? 'Update Occupations' : 'Submit'}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Primary Action 2: Start Skill Extraction */}
+                <button
+                  type="button"
+                  onClick={handleStartSkillExtraction}
+                  disabled={!isSubmitted || isSubmitting || isExtractingSkills}
+                  title={
+                    isSubmitted
+                      ? 'Proceed to Gemini Skill Extraction'
+                      : 'Please Submit reviewed occupations first to enable this action'
+                  }
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all shadow-md active:scale-95 ${
+                    isSubmitted
+                      ? 'bg-gradient-to-r from-[#F5C563] via-[#E8B145] to-[#D99B26] hover:brightness-105 border border-[#FCE19C]/60 text-[#2B0712] cursor-pointer'
+                      : 'bg-[#2E0818] border border-[#850E35]/40 text-[#FFBAC7]/40 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <Play
+                    size={15}
+                    className={isSubmitted ? 'text-[#590922]' : 'text-[#FFBAC7]/30'}
+                  />
+                  <span>Start Skill Extraction</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>,

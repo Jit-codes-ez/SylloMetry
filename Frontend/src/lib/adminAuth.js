@@ -679,3 +679,102 @@ export async function deletePendingEvidence(documentId) {
 }
 
 
+
+/**
+ * 19B. Retrieve complete page-wise extracted text and deterministic occupations (Part 3).
+ * GET /api/admin/industry-documents/{document_id}/extraction-preview
+ */
+export async function getDocumentExtractionPreview(documentId) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/extraction-preview`,
+    {
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to extract text and occupations.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 19C. Atomically validate, upsert, and associate edited occupations (Part 3).
+ * POST /api/admin/industry-documents/{document_id}/occupations/save-batch
+ */
+export async function saveDocumentOccupationsBatch(documentId, occupations) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/occupations/save-batch`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ occupations }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to save occupations.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 19D. Transactionally save administrator-reviewed skills and supporting evidence (Part 5).
+ * POST /api/admin/industry-documents/{document_id}/save-skills
+ * @param {number} documentId
+ * @param {Array<Object>} skills
+ * @returns {Promise<{ success: boolean, message: string, document_id: number, new_skills_created: number, reused_skills_count: number, evidence_inserted: number, duplicates_skipped: number }>}
+ */
+export async function saveDocumentSkills(documentId, skills) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/save-skills`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ skills }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to save skills and evidence.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+

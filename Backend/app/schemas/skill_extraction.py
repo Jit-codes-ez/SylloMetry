@@ -10,15 +10,23 @@ class ExtractedSkillItem(BaseModel):
     """A single skill extracted by Gemini from a 2-page window."""
     skill_name: str = Field(
         ...,
-        description="A short, standard name without verbs, e.g. 'Wireshark', 'Subnetting', 'Docker', 'SQL injection'",
+        description="A short, standard canonical noun phrase without action verbs, e.g. 'Wireshark', 'Subnetting', 'Docker', 'OpenStack'",
     )
     skill_type: str = Field(
         ...,
-        description="One of: tool, technique, concept, domain_knowledge, soft_skill",
+        description="One of: tool, technique, concept, domain_knowledge",
+    )
+    skill_category: Optional[str] = Field(
+        default=None,
+        description="Broad technical domain or category, e.g. 'Network Security', 'Cloud Infrastructure', 'Web Development'",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Brief concise technical description of what this skill entails",
     )
     depth_cue: str = Field(
         ...,
-        description="The main verb from the source phrase in lowercase, e.g. 'understand', 'configure', 'create'",
+        description="The main verb or cognitive depth cue from the source in lowercase, e.g. 'understand', 'configure', 'install', 'troubleshoot'",
     )
     raw_phrase: str = Field(
         ...,
@@ -34,11 +42,15 @@ class ExtractedSkillItem(BaseModel):
     )
     section_name: str = Field(
         ...,
-        description="The NOS or section heading, e.g. 'NOS 3 | NIE/ITS/N0906 | Cryptography and Ethical Hacking'",
+        description="The NOS heading and subsection, formatted as 'NOS <N>: <Name> | <Knowledge/Skill/Responsibility/Criteria>'",
     )
     confidence: float = Field(
         ...,
         description="Confidence score from 0.0 to 1.0",
+    )
+    aliases: List[str] = Field(
+        default_factory=list,
+        description="Common technical aliases, acronyms, or spelling variations (excluding canonical skill name), e.g. ['AD'] for Active Directory",
     )
 
 
@@ -75,6 +87,7 @@ class SampleAcceptedItem(BaseModel):
     page_number: int
     section_name: str
     confidence: float
+    aliases: List[str] = Field(default_factory=list)
 
 
 class SampleRejectedItem(BaseModel):
@@ -110,13 +123,87 @@ class JobStartResponse(BaseModel):
     message: str
 
 
+class ReviewSkillItem(BaseModel):
+    """Temporary extracted skill item for in-memory / review-phase editing prior to Part 5 persistence."""
+    temp_id: str = Field(
+        ...,
+        description="Unique temporary client/session identifier for the extracted skill record",
+    )
+    skill_name: str = Field(
+        ...,
+        description="Canonical technical skill name",
+    )
+    skill_type: str = Field(
+        ...,
+        description="One of: tool, technique, concept, domain_knowledge",
+    )
+    skill_category: Optional[str] = Field(
+        default="",
+        description="Broad technical category or domain",
+    )
+    description: Optional[str] = Field(
+        default="",
+        description="Brief technical description of what the skill entails",
+    )
+    depth_cue: Optional[str] = Field(
+        default="",
+        description="Cognitive depth cue or main action verb in lowercase",
+    )
+    raw_phrase: Optional[str] = Field(
+        default="",
+        description="Raw phrase as stated in source document",
+    )
+    evidence_quote: str = Field(
+        ...,
+        description="Exact contiguous quotation from source text",
+    )
+    page_number: int = Field(
+        ...,
+        description="Stated 1-based source page number",
+    )
+    verified_page_number: Optional[int] = Field(
+        default=None,
+        description="Verified 1-based page number after PDF text matching",
+    )
+    quote_validation_status: str = Field(
+        default="exact_page_match",
+        description="Verification result: exact_page_match, page_mismatch, quote_not_found, invalid_quote",
+    )
+    section_name: Optional[str] = Field(
+        default="",
+        description="Source section or NOS heading",
+    )
+    confidence_score: float = Field(
+        default=0.0,
+        description="Temporary review confidence score (0.0 to 1.0)",
+    )
+    aliases: List[str] = Field(
+        default_factory=list,
+        description="Technical aliases or abbreviations",
+    )
+
+
 class JobStatusResponse(BaseModel):
     """Response returned when polling extraction job status."""
     job_id: str
-    status: str  # "running" | "done" | "failed"
+    status: str  # "running" | "done" | "completed" | "completed_with_warnings" | "failed"
     progress: ExtractionProgress
     summary: Optional[ExtractionSummary] = None
+    session_id: Optional[str] = None
     error: Optional[str] = None
+    extracted_skills: List[ReviewSkillItem] = Field(
+        default_factory=list,
+        description="List of extracted skills available for administrator review and editing",
+    )
+
+
+class RetryJobResponse(BaseModel):
+    """Response returned when retrying failed extraction windows."""
+    job_id: str
+    status: str
+    document_id: int
+    message: str
+    retrying_windows: List[int] = Field(default_factory=list)
 
 
 class DeletePendingEvidenceResponse(BaseModel):
@@ -125,3 +212,22 @@ class DeletePendingEvidenceResponse(BaseModel):
     message: str
     deleted_count: int
     document_id: int
+
+
+class SaveSkillsRequest(BaseModel):
+    """Request payload containing administrator-reviewed skills to persist."""
+    skills: List[ReviewSkillItem] = Field(
+        ...,
+        description="List of reviewed and edited skills with supporting evidence to save",
+    )
+
+
+class SaveSkillsResponse(BaseModel):
+    """Response returned upon saving skills and evidence to the database."""
+    success: bool = True
+    message: str
+    document_id: int
+    new_skills_created: int
+    reused_skills_count: int
+    evidence_inserted: int
+    duplicates_skipped: int

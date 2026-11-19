@@ -1,12 +1,9 @@
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 DocumentTypeLiteral = Literal[
     "qualification_file",
     "job_description",
-    "certification_guide",
-    "hiring_assessment_syllabus",
-    "industry_report",
 ]
 
 RelationshipTypeLiteral = Literal[
@@ -17,9 +14,6 @@ RelationshipTypeLiteral = Literal[
 ALLOWED_DOCUMENT_TYPES = (
     "qualification_file",
     "job_description",
-    "certification_guide",
-    "hiring_assessment_syllabus",
-    "industry_report",
 )
 
 ALLOWED_RELATIONSHIP_TYPES = (
@@ -41,11 +35,12 @@ class DocumentRegistrationRequest(BaseModel):
 class LinkedOccupationItem(BaseModel):
     """Occupation linked to a registered industry document."""
     id: int = Field(..., description="ID from document_occupations join table")
-    occupation_id: int = Field(..., description="ID from occupations table")
-    classification_system: str = Field(..., description="e.g. NCO-2015, O*NET")
-    classification_code: str = Field(..., description="e.g. 2512.0101")
-    occupation_name: str = Field(..., description="Name of occupation")
+    occupation_code: str = Field(default="", description="e.g. 2522.0201 NCO code")
+    occupation_name: str = Field(default="", description="Name of occupation")
     relationship_type: str = Field(..., description="'aligned_nco' or 'target_role'")
+    occupation_id: Optional[Any] = Field(default=None, description="Legacy field for backward compatibility")
+    classification_system: Optional[str] = Field(default="NCO", description="Legacy classification system")
+    classification_code: Optional[str] = Field(default=None, description="Legacy code field")
 
 
 class IndustryDocumentItem(BaseModel):
@@ -96,3 +91,58 @@ class DocumentTextPreviewResponse(BaseModel):
     total_pages: int
     pages: List[PagePreviewItem] = Field(default_factory=list)
     single_page: Optional[PagePreviewItem] = None
+
+
+# ==============================================================================
+# Part 3: Extraction Preview & Occupation Persistence Schemas
+# ==============================================================================
+
+class CompleteExtractedPageItem(BaseModel):
+    """Complete page text preserving page boundary, number, and status."""
+    page_number: int = Field(..., description="1-based page number")
+    text: str = Field(..., description="Full cleaned extracted text for this page")
+    char_count: int = Field(..., description="Character count on this page")
+    is_empty: bool = Field(default=False, description="True if page contains 0 extractable text")
+
+
+class ExtractedOccupationItem(BaseModel):
+    """Extracted or registered occupation item with source page tracking."""
+    occupation_code: str = Field(..., max_length=20, description="Occupation / NCO code as string (preserving dots)")
+    occupation_name: str = Field(default="", max_length=255, description="Occupation or Role title")
+    source_page: Optional[int] = Field(default=None, description="Source page number where extracted")
+
+
+class DocumentExtractionPreviewResponse(BaseModel):
+    """Combined preview response containing complete page-wise text and extracted occupations."""
+    success: bool = True
+    document_id: int
+    document_name: str
+    document_type: str
+    storage_path: str
+    total_pages: int
+    total_characters: int
+    pages: List[CompleteExtractedPageItem] = Field(default_factory=list)
+    occupations: List[ExtractedOccupationItem] = Field(default_factory=list)
+    is_already_submitted: bool = Field(default=False, description="True if document already has linked occupations saved")
+
+
+class OccupationSubmitItem(BaseModel):
+    """Single occupation record to validate and persist."""
+    occupation_code: str = Field(..., min_length=1, max_length=20, description="String code preserving dots/punctuation")
+    occupation_name: str = Field(..., min_length=1, max_length=255, description="Role or Occupation title")
+    source_page: Optional[int] = Field(default=None, description="Optional source page number")
+
+
+class BatchSaveOccupationsRequest(BaseModel):
+    """Request payload to save edited occupations and link them to document."""
+    occupations: List[OccupationSubmitItem] = Field(..., min_items=1, description="List of at least one valid occupation")
+
+
+class BatchSaveOccupationsResponse(BaseModel):
+    """Response after saving occupations and associations."""
+    success: bool = True
+    message: str
+    document_id: int
+    relationship_type: str
+    saved_count: int
+    occupations: List[OccupationSubmitItem] = Field(default_factory=list)

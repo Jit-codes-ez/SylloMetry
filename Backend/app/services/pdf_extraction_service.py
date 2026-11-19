@@ -8,9 +8,13 @@ import pymupdf
 from app.core.config import settings
 from app.core.supabase import get_supabase_admin_client
 from app.schemas.industry_documents import (
+    CompleteExtractedPageItem,
+    DocumentExtractionPreviewResponse,
     DocumentTextPreviewResponse,
+    ExtractedOccupationItem,
     PagePreviewItem,
 )
+from app.services.occupation_extraction_service import extract_occupations_from_pages
 
 logger = logging.getLogger("app.services.pdf_extraction")
 
@@ -150,13 +154,29 @@ def extract_pages(document_id: int) -> List[Dict[str, Any]]:
         low_text = char_count < LOW_TEXT_THRESHOLD_CHARS
         snippet = page_text[:300] if page_text else ""
 
+        is_empty = char_count == 0
+
         extracted_results.append({
             "page_number": page_num,
             "text": page_text,
             "char_count": char_count,
             "low_text": low_text,
+            "is_empty": is_empty,
             "snippet": snippet,
         })
+
+    # Validate that entire document is not empty / scanned
+    total_chars = sum(p["char_count"] for p in extracted_results)
+    if total_chars == 0:
+        logger.warning(
+            "PDF document %d (%s) yielded 0 extractable characters. Scanned image or corrupted file.",
+            document_id,
+            storage_path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The PDF contains no usable text. It may be a scanned image or corrupted document. A text-based PDF is required.",
+        )
 
     return extracted_results
 
@@ -216,4 +236,113 @@ def get_document_text_preview(
         total_pages=total_pages,
         pages=page_items,
         single_page=single_page_item,
+    )
+
+
+def get_document_extraction_preview(
+    document_id: int,
+) -> DocumentExtractionPreviewResponse:
+    """
+    Combined extraction service for Part 3:
+    1. Retrieves PDF from storage and extracts full page-wise text using PyMuPDF
+    2. Enforces text presence (rejects scanned / empty PDFs with clear 400 error)
+    3. Checks if occupations have already been submitted to document_occupations
+    4. If not submitted, deterministically extracts occupations from text without an LLM
+    5. Returns page-wise clean text and extracted occupations for administrator preview/editing
+    """
+    admin_client = get_supabase_admin_client()
+    if not admin_client:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Storage service unavailable.",
+        )
+
+    # 1. Fetch document record
+    doc_res = (
+        admin_client.table("industry_documents")
+        .select("*")
+        .eq("document_id", document_id)
+        .limit(1)
+        .execute()
+    )
+    if not doc_res.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Industry document with ID {document_id} not found.",
+        )
+
+    doc_record = doc_res.data[0]
+    category = doc_record.get("document_type") or "qualification_file"
+    storage_path = doc_record.get("storage_path") or ""
+
+    # 2. Extract page-wise text using PyMuPDF
+    pages_data = extract_pages(document_id)
+    total_pages = len(pages_data)
+    total_characters = sum(p["char_count"] for p in pages_data)
+
+    if total_characters == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The PDF contains no usable text. It may be a scanned image or corrupted document. A text-based PDF is required.",
+        )
+
+    # 3. Check for existing saved occupations in document_occupations
+    saved_occupations: List[Dict[str, Any]] = []
+    try:
+        existing_res = (
+            admin_client.table("document_occupations")
+            .select("occupation_code, relationship_type, occupations(occupation_code, occupation_name)")
+            .eq("document_id", document_id)
+            .execute()
+        )
+        if existing_res.data:
+            for row in existing_res.data:
+                occ_info = row.get("occupations") or {}
+                saved_occupations.append({
+                    "occupation_code": str(row.get("occupation_code") or occ_info.get("occupation_code") or ""),
+                    "occupation_name": str(occ_info.get("occupation_name") or ""),
+                    "source_page": None,
+                })
+    except Exception as e:
+        logger.warning("Could not check existing document_occupations for doc %d: %s", document_id, str(e))
+
+    is_already_submitted = len(saved_occupations) > 0
+
+    # 4. Use existing occupations if already submitted; otherwise extract without LLM
+    if is_already_submitted:
+        occupations_list = saved_occupations
+    else:
+        occupations_list = extract_occupations_from_pages(pages_data, category)
+
+    # 5. Format response items
+    page_items = [
+        CompleteExtractedPageItem(
+            page_number=p["page_number"],
+            text=p["text"],
+            char_count=p["char_count"],
+            is_empty=p.get("is_empty", p["char_count"] == 0),
+        )
+        for p in pages_data
+    ]
+
+    occ_items = [
+        ExtractedOccupationItem(
+            occupation_code=str(o.get("occupation_code") or ""),
+            occupation_name=str(o.get("occupation_name") or ""),
+            source_page=o.get("source_page"),
+        )
+        for o in occupations_list
+    ]
+
+    return DocumentExtractionPreviewResponse(
+        success=True,
+        document_id=doc_record["document_id"],
+        document_name=doc_record["document_name"],
+        document_type=category,
+        storage_path=storage_path,
+        total_pages=total_pages,
+        total_characters=total_characters,
+        pages=page_items,
+        occupations=occ_items,
+        is_already_submitted=is_already_submitted,
     )

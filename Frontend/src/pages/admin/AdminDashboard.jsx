@@ -1,28 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import {
   UploadCloud,
   FileText,
   CheckCircle2,
-  CircleCheck,
   AlertCircle,
   Loader2,
-  Trash2,
   Download,
   RefreshCw,
-  Database,
   Filter,
   ChevronLeft,
   ChevronRight,
-  X,
-  BookOpen,
-  Briefcase,
-  Plus,
-  Unlink,
-  ExternalLink,
-  Layers,
   Sparkles,
-  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import AdminNavbar from './AdminNavbar';
@@ -34,34 +23,28 @@ import {
   uploadIndustryFile,
   listIndustryFiles,
   getIndustryFileDownloadUrl,
-  deleteIndustryFile,
   getRegisteredIndustryDocuments,
-  unlinkOccupationFromDocument,
-  deletePendingEvidence,
 } from '@/lib/adminAuth';
-import RegisterDocumentModal from './RegisterDocumentModal';
-import AddOccupationModal from './AddOccupationModal';
-import TextPreviewModal from './TextPreviewModal';
 import ExtractSkillsModal from './ExtractSkillsModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Format category values into human-readable strings
+// Format category values into human-readable strings (strictly 2 categories)
 const CATEGORY_LABELS = {
   qualification_file: 'Qualification File',
   job_description: 'Job Description',
-  certification_guide: 'Certification Guide',
-  hiring_assessment_syllabus: 'Hiring Assessment Syllabus',
-  industry_report: 'Industry Report',
 };
 
 // Theme-aligned badge classes for category visualization
 const CATEGORY_STYLES = {
   qualification_file: 'bg-[#3A1024] text-[#FFA8B8] border-[#850E35]/60',
   job_description: 'bg-[#290F38] text-[#E9D5FF] border-[#7E22CE]/40',
-  certification_guide: 'bg-[#0E2730] text-[#67E8F9] border-[#0891B2]/40',
-  hiring_assessment_syllabus: 'bg-[#2D210B] text-[#FDE047] border-[#CA8A04]/40',
-  industry_report: 'bg-[#0E2818] text-[#86EFAC] border-[#16A34A]/40',
+};
+
+// Strips redundant repeated .pdf extensions (e.g., file.pdf.pdf -> file.pdf)
+const cleanFileName = (filename) => {
+  if (!filename) return '';
+  return filename.replace(/(?:\.pdf)+$/i, '') + '.pdf';
 };
 
 export default function AdminDashboard() {
@@ -85,23 +68,14 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Registered Documents State
+  // Registered Documents State (used for mapping and statistics)
   const [registeredDocs, setRegisteredDocs] = useState([]);
-  const [isLoadingRegistered, setIsLoadingRegistered] = useState(true);
 
-  // Active Download & Delete Action States
+  // Active Download Action State
   const [downloadingPath, setDownloadingPath] = useState(null);
-  const [fileToDelete, setFileToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Modal Control States
-  const [fileToRegister, setFileToRegister] = useState(null);
-  const [docToAddOccupation, setDocToAddOccupation] = useState(null);
-  const [docToPreviewText, setDocToPreviewText] = useState(null);
+  // Extract Skills Modal State
   const [docToExtractSkills, setDocToExtractSkills] = useState(null);
-  const [docToDeletePending, setDocToDeletePending] = useState(null);
-  const [isDeletingPending, setIsDeletingPending] = useState(false);
-  const [pendingSuccessMsg, setPendingSuccessMsg] = useState(null);
 
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
@@ -136,14 +110,11 @@ export default function AdminDashboard() {
   // Load registered documents with linked occupations
   // ---------------------------------------------------------------------------
   const fetchRegisteredDocs = useCallback(async () => {
-    setIsLoadingRegistered(true);
     try {
       const docs = await getRegisteredIndustryDocuments();
       setRegisteredDocs(docs || []);
     } catch (err) {
       console.error('Failed to load registered documents:', err);
-    } finally {
-      setIsLoadingRegistered(false);
     }
   }, []);
 
@@ -161,6 +132,15 @@ export default function AdminDashboard() {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     };
   }, []);
+
+  // Auto-dismiss upload success notification after 3.5 seconds
+  useEffect(() => {
+    if (!uploadSuccessDoc) return;
+    const timer = setTimeout(() => {
+      setUploadSuccessDoc(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [uploadSuccessDoc]);
 
   // Set of registered storage paths to identify registration status in stored files table
   const registeredPathSet = new Set(registeredDocs.map((d) => d.storage_path));
@@ -263,7 +243,13 @@ export default function AdminDashboard() {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       setUploadProgress(100);
 
-      setUploadSuccessDoc(res.file);
+      setUploadSuccessDoc({
+        document_id: res.document_id,
+        document_name: cleanFileName(res.document_name || selectedFile.name),
+        document_type: res.document_type || selectedCategory,
+        storage_path: res.storage_path,
+        size_bytes: res.file?.size_bytes || selectedFile.size,
+      });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -303,59 +289,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Delete Handler with Confirmation Modal
-  // ---------------------------------------------------------------------------
-  const confirmDeleteFile = async () => {
-    if (!fileToDelete || isDeleting) return;
 
-    setIsDeleting(true);
-    try {
-      await deleteIndustryFile(fileToDelete.storage_path);
-      setFileToDelete(null);
-      await fetchFiles();
-      await fetchRegisteredDocs();
-    } catch (err) {
-      console.error('Delete error:', err);
-      setErrorMessage(err.message || 'Failed to delete file from Supabase storage.');
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Unlink Occupation Handler
-  // ---------------------------------------------------------------------------
-  const handleUnlinkOccupation = async (documentId, occupationId, relationshipType) => {
-    try {
-      await unlinkOccupationFromDocument(documentId, occupationId, relationshipType);
-      await fetchRegisteredDocs();
-    } catch (err) {
-      console.error('Unlink error:', err);
-      setErrorMessage(err.message || 'Failed to unlink occupation.');
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Delete Pending Evidence Handler
-  // ---------------------------------------------------------------------------
-  const confirmDeletePendingEvidence = async () => {
-    if (!docToDeletePending || isDeletingPending) return;
-    setIsDeletingPending(true);
-    setErrorMessage(null);
-    try {
-      const res = await deletePendingEvidence(docToDeletePending.document_id);
-      setPendingSuccessMsg(res.message || `Deleted ${res.deleted_count} pending evidence row(s).`);
-      setDocToDeletePending(null);
-      await fetchRegisteredDocs();
-      setTimeout(() => setPendingSuccessMsg(null), 5000);
-    } catch (err) {
-      console.error('Delete pending evidence error:', err);
-      setErrorMessage(err.message || 'Failed to delete pending evidence.');
-    } finally {
-      setIsDeletingPending(false);
-    }
-  };
 
   const adminName =
     admin?.full_name?.split(' ')[0] ||
@@ -368,6 +302,26 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gradient-to-b from-[#1C040E] via-[#140209] to-[#0E0106] text-[#FFF5E4] pt-24 pb-16 selection:bg-[#C73659]/30 selection:text-white">
       {/* Top Fixed Admin Navigation */}
       <AdminNavbar />
+
+      {/* Top Floating Notification (Auto-fades in 3-4 seconds) */}
+      <AnimatePresence>
+        {uploadSuccessDoc && (
+          <div className="fixed top-24 inset-x-0 flex justify-center z-[100] pointer-events-none px-4">
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-emerald-950/95 border border-emerald-500/60 text-emerald-100 shadow-2xl backdrop-blur-md text-xs sm:text-sm font-semibold tracking-wide pointer-events-auto"
+            >
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span className="truncate max-w-sm sm:max-w-md">
+                <strong>{cleanFileName(uploadSuccessDoc.document_name)}</strong> uploaded successfully!
+              </span>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <div className="mx-auto max-w-[1450px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9 space-y-8">
         {/* =========================================================
@@ -396,15 +350,6 @@ export default function AdminDashboard() {
                 </p>
                 <p className="text-xl text-center font-extrabold text-white">
                   {totalCount}
-                </p>
-              </div>
-
-              <div className="px-4 py-2.5 rounded-xl bg-[#18030C] border border-[#850E35]/50 text-center min-w-[120px]">
-                <p className="text-[10px] uppercase font-bold tracking-wider text-[#FFA8B8]">
-                  Registered
-                </p>
-                <p className="text-xl text-center font-extrabold text-white">
-                  {registeredDocs.length}
                 </p>
               </div>
 
@@ -440,25 +385,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Global Success Notification for Pending Deletion */}
-        {pendingSuccessMsg && (
-          <div
-            role="status"
-            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/80 p-4 text-xs text-emerald-200 animate-in fade-in duration-200"
-          >
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={17} className="text-emerald-400 shrink-0" />
-              <span>{pendingSuccessMsg}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setPendingSuccessMsg(null)}
-              className="text-emerald-300 hover:text-white text-xs font-bold underline cursor-pointer"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+
 
         {/* =========================================================
             2. MAIN FEATURE: PDF UPLOAD INTERFACE
@@ -570,7 +497,7 @@ export default function AdminDashboard() {
                       <FileTypeBadge ext="PDF" className="shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs sm:text-sm font-bold text-white truncate">
-                          {selectedFile.name}
+                          {cleanFileName(selectedFile.name)}
                         </p>
                         <p className="text-[11px] text-[#FFBAC7]/70">
                           {getReadableFileSize(selectedFile.size)} • Category:{' '}
@@ -660,257 +587,7 @@ export default function AdminDashboard() {
         </section>
 
         {/* =========================================================
-            3. POST-UPLOAD SUCCESS NOTIFICATION CARD
-        ========================================================== */}
-        <AnimatePresence>
-          {uploadSuccessDoc && (
-            <motion.section
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.98 }}
-              className="rounded-3xl border border-emerald-500/40 bg-emerald-950/60 p-6 sm:p-7 shadow-lg backdrop-blur-md"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-start gap-3.5">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-xs">
-                    <CircleCheck size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-emerald-200">
-                      Document Successfully Stored in Private Bucket!
-                    </h3>
-                    <p className="mt-1 text-xs text-emerald-300 leading-relaxed max-w-xl">
-                      <strong>{uploadSuccessDoc.display_name}</strong> ({getReadableFileSize(uploadSuccessDoc.size_bytes)}) has been safely stored in <code>{uploadSuccessDoc.storage_path}</code>. You can now register it in the database below.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFileToRegister(uploadSuccessDoc);
-                      setUploadSuccessDoc(null);
-                    }}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/40 transition-colors cursor-pointer shadow-md"
-                  >
-                    Register Document Now
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setUploadSuccessDoc(null)}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:text-white hover:bg-emerald-900/60 border border-emerald-500/40 transition-colors cursor-pointer"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
-
-        {/* =========================================================
-            4. REGISTERED INDUSTRY DOCUMENTS (DATABASE & OCCUPATIONS)
-        ========================================================== */}
-        <section id="admin-registered-documents">
-          <div className="rounded-3xl border border-[#850E35]/40 bg-[#240614]/95 p-6 sm:p-8 shadow-xl backdrop-blur-md">
-            {/* Header Toolbar */}
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2 drop-shadow-sm">
-                  <Database size={18} className="text-[#C73659]" />
-                  <span>Registered Industry Documents</span>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
-                    {registeredDocs.length} Active
-                  </span>
-                </h3>
-                <p className="text-xs text-[#FFBAC7] mt-0.5">
-                  Curriculum benchmarks registered and linked to National Occupational Standards (NCO).
-                </p>
-              </div>
-
-              <Button2
-                type="button"
-                onClick={fetchRegisteredDocs}
-                disabled={isLoadingRegistered}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18030C] border border-[#850E35]/40 text-xs font-semibold text-[#FFA8B8] hover:text-white hover:bg-[#290516] transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
-                title="Refresh registered documents"
-              >
-                <RefreshCw size={13} className={cn(isLoadingRegistered && 'animate-spin')} />
-                <span>Refresh</span>
-              </Button2>
-            </div>
-
-            {/* Registered Documents Table / List */}
-            {isLoadingRegistered ? (
-              <div className="rounded-2xl border border-dashed border-[#850E35]/35 bg-[#18030C]/50 p-12 text-center space-y-3">
-                <Loader2 size={28} className="mx-auto text-[#C73659] animate-spin" />
-                <p className="text-xs text-[#FFBAC7]">Loading registered documents from database...</p>
-              </div>
-            ) : registeredDocs.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#850E35]/35 bg-[#18030C]/50 p-10 text-center space-y-2">
-                <FileText size={32} className="mx-auto text-[#850E35]/70" />
-                <p className="text-sm font-semibold text-white">No registered industry documents yet</p>
-                <p className="text-xs text-[#FFBAC7]/70 max-w-md mx-auto">
-                  Click the <strong>Register</strong> button on any file in the Stored Files list below to link it with occupational benchmarks.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {registeredDocs.map((doc) => {
-                  const typeClass = CATEGORY_STYLES[doc.document_type] || 'bg-[#3A1024] text-[#FFA8B8] border-[#850E35]/60';
-
-                  return (
-                    <div
-                      key={doc.document_id}
-                      className="rounded-2xl border border-[#850E35]/40 bg-[#18030C] p-5 sm:p-6 hover:border-[#C73659]/70 transition-all space-y-4"
-                    >
-                      {/* Document Meta Row */}
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div className="space-y-1.5 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            <span className="px-2 py-0.5 rounded-md bg-[#2D0616] border border-[#850E35]/60 text-[10px] font-mono font-bold text-white">
-                              ID: #{doc.document_id}
-                            </span>
-
-                            <h4 className="text-sm sm:text-base font-bold text-white truncate max-w-xl">
-                              {doc.document_name}
-                            </h4>
-
-                            <span
-                              className={cn(
-                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-wider uppercase whitespace-nowrap',
-                                typeClass
-                              )}
-                            >
-                              {CATEGORY_LABELS[doc.document_type] || doc.document_type}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-[#FFBAC7]/70">
-                            {doc.issuing_organization && (
-                              <span>
-                                Org: <strong className="text-white">{doc.issuing_organization}</strong>
-                              </span>
-                            )}
-                            {doc.published_date && (
-                              <span>• Published: <strong className="text-white">{doc.published_date}</strong></span>
-                            )}
-                            {doc.source_url && (
-                              <a
-                                href={doc.source_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[#FFA8B8] hover:text-white underline underline-offset-2"
-                              >
-                                <span>Source</span>
-                                <ExternalLink size={11} />
-                              </a>
-                            )}
-                          </div>
-
-                          <p className="text-[11px] font-mono text-[#FFBAC7]/50 truncate max-w-2xl">
-                            Storage: {doc.storage_path}
-                          </p>
-                        </div>
-
-                        {/* Document Actions */}
-                        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
-                          {/* Extract Skills Button */}
-                          <Button2
-                            type="button"
-                            onClick={() => setDocToExtractSkills(doc)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-900 to-purple-700 hover:brightness-110 border border-purple-500/40 text-purple-100 text-xs font-bold shadow-md shadow-purple-950/40 transition-all cursor-pointer"
-                            title="Extract skills via Gemini LLM in 2-page windows"
-                          >
-                            <Sparkles size={14} className="text-purple-300" />
-                            <span>Extract Skills</span>
-                          </Button2>
-
-                          {/* Preview Text Button */}
-                          <Button2
-                            type="button"
-                            onClick={() => setDocToPreviewText(doc)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-[#850E35] to-[#B8194E] hover:brightness-110 text-white text-xs font-bold shadow-md shadow-[#850E35]/30 transition-all cursor-pointer"
-                            title="Extract and inspect text"
-                          >
-                            <BookOpen size={14} />
-                            <span>Preview Text</span>
-                          </Button2>
-
-                          {/* Link Occupation Button */}
-                          <Button2
-                            type="button"
-                            onClick={() => setDocToAddOccupation(doc)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#290516] hover:bg-[#36081B] border border-[#850E35]/60 text-xs font-semibold text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
-                            title="Link an occupation standard to this document"
-                          >
-                            <Plus size={14} />
-                            <span>Link Occupation</span>
-                          </Button2>
-                        </div>
-                      </div>
-
-                      {/* Linked Occupations Area */}
-                      <div className="pt-3 border-t border-[#850E35]/30">
-                        <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-[#FFA8B8]">
-                          <Briefcase size={13} className="text-[#E36A6A]" />
-                          <span>Linked Occupations ({doc.occupations?.length || 0})</span>
-                        </div>
-
-                        {(!doc.occupations || doc.occupations.length === 0) ? (
-                          <p className="text-xs text-[#FFBAC7]/60 italic">
-                            No occupations linked yet. Click "Link Occupation" to align this document with NCO-2015 or target roles.
-                          </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {doc.occupations.map((occ) => {
-                              const isTargetRole = occ.relationship_type === 'target_role';
-                              return (
-                                <div
-                                  key={occ.id}
-                                  className={cn(
-                                    'inline-flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-xl text-xs border transition-colors group',
-                                    isTargetRole
-                                      ? 'bg-purple-950/60 border-purple-500/40 text-purple-200'
-                                      : 'bg-indigo-950/60 border-indigo-500/40 text-indigo-200'
-                                  )}
-                                >
-                                  <div className="space-x-1.5 font-medium">
-                                    <span className="font-bold text-white">
-                                      {occ.classification_code}
-                                    </span>
-                                    <span>{occ.occupation_name}</span>
-                                    <span className="text-[10px] uppercase font-bold opacity-75">
-                                      ({occ.relationship_type.replace('_', ' ')})
-                                    </span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUnlinkOccupation(doc.document_id, occ.occupation_id, occ.relationship_type)}
-                                    className="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-900/60 transition-colors cursor-pointer"
-                                    title="Unlink this occupation from document"
-                                  >
-                                    <X size={13} />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* =========================================================
-            5. STORED FILES LIST WITH REGISTRATION STATUS & ACTIONS
+            3. STORED FILES LIST & ACTIONS
         ========================================================== */}
         <section id="admin-stored-files">
           <div className="rounded-3xl border border-[#850E35]/40 bg-[#240614]/95 p-6 sm:p-8 shadow-xl backdrop-blur-md">
@@ -1001,7 +678,6 @@ export default function AdminDashboard() {
                     <tr className="border-b border-[#850E35]/30 text-[#FFA8B8] uppercase tracking-wider text-[10px]">
                       <th className="pb-3 font-bold pl-2">Document Name</th>
                       <th className="pb-3 font-bold">Category</th>
-                      <th className="pb-3 font-bold">Registration</th>
                       <th className="pb-3 font-bold">Size</th>
                       <th className="pb-3 font-bold">Uploaded Date</th>
                       <th className="pb-3 font-bold text-right pr-2">Actions</th>
@@ -1010,7 +686,8 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-[#850E35]/20">
                     {files.map((file) => {
                       const isDownloadingThis = downloadingPath === file.storage_path;
-                      const isRegistered = registeredPathSet.has(file.storage_path);
+                      const registeredDoc = registeredDocs.find((d) => d.storage_path === file.storage_path);
+                      const isRegistered = Boolean(registeredDoc);
                       const categoryClass = CATEGORY_STYLES[file.category] || 'bg-[#3A1024] text-[#FFA8B8] border-[#850E35]/60';
                       const formattedDate = file.upload_date
                         ? new Date(file.upload_date).toLocaleDateString(undefined, {
@@ -1034,8 +711,8 @@ export default function AdminDashboard() {
                           <td className="py-3.5 pl-2 font-medium text-white flex items-center gap-2.5">
                             <FileTypeBadge ext="PDF" className="scale-75 -my-2 shrink-0" />
                             <div className="min-w-0">
-                              <span className="truncate block max-w-[200px] sm:max-w-[300px] font-semibold text-white" title={file.display_name}>
-                                {file.display_name}
+                              <span className="truncate block max-w-[200px] sm:max-w-[300px] font-semibold text-white" title={cleanFileName(file.display_name)}>
+                                {cleanFileName(file.display_name)}
                               </span>
                               <span className="text-[10px] text-[#FFBAC7]/50 font-mono block truncate max-w-[200px] sm:max-w-[300px]">
                                 {file.storage_path}
@@ -1044,35 +721,8 @@ export default function AdminDashboard() {
                           </td>
 
                           {/* Category Badge */}
-                          <td className="py-3.5">
-                            <span
-                              className={cn(
-                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-wider uppercase whitespace-nowrap',
-                                categoryClass
-                              )}
-                            >
+                          <td className="py-3.5 text-[#FFBAC7] font-medium whitespace-nowrap">
                               {CATEGORY_LABELS[file.category] || file.category}
-                            </span>
-                          </td>
-
-                          {/* Registration Status */}
-                          <td className="py-3.5 whitespace-nowrap">
-                            {isRegistered ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[10px] font-bold text-emerald-300">
-                                <CheckCircle2 size={11} className="text-emerald-400" />
-                                <span>Registered</span>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setFileToRegister(file)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#850E35]/40 hover:bg-[#850E35] border border-[#850E35]/60 text-xs font-semibold text-white transition-colors cursor-pointer"
-                                title="Register this document in the database"
-                              >
-                                <Plus size={12} />
-                                <span>Register</span>
-                              </button>
-                            )}
                           </td>
 
                           {/* Size */}
@@ -1085,36 +735,34 @@ export default function AdminDashboard() {
                             {formattedDate}
                           </td>
 
-                          {/* Actions: Download & Delete */}
+                          {/* Actions: Extract Skills & Download */}
                           <td className="py-3.5 text-right pr-2 whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5 justify-end">
+                            <div className="inline-flex items-center gap-2 justify-end">
+                              {/* Extract Skills Button */}
+                              {registeredDoc && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDocToExtractSkills(registeredDoc)}
+                                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#F5C563] via-[#E8B145] to-[#D99B26] hover:brightness-105 border border-[#FCE19C]/60 text-[#2B0712] text-xs font-extrabold tracking-wide shadow-md shadow-black/40 transition-all active:scale-95 cursor-pointer"
+                                  >
+                                  <Sparkles size={14} className="text-[#590922] fill-[#590922]/20" />
+                                  <span>Extract Skills</span>
+                                </button>
+                              )}
+
                               {/* 60-Second Signed Download */}
                               <button
                                 type="button"
-                                onClick={() => handleDownload(file.storage_path, file.display_name)}
+                                onClick={() => handleDownload(file.storage_path, cleanFileName(file.display_name))}
                                 disabled={isDownloadingThis}
                                 className="p-1.5 rounded-lg text-[#FFA8B8] hover:text-white hover:bg-[#850E35]/50 border border-[#850E35]/40 transition-colors cursor-pointer disabled:opacity-50"
-                                title="Download document via 60-second signed URL"
+                                title="Download Document"
                               >
                                 {isDownloadingThis ? (
                                   <Loader2 size={14} className="animate-spin text-white" />
                                 ) : (
                                   <Download size={14} />
                                 )}
-                              </button>
-
-                              {/* Delete with Confirmation */}
-                              <button
-                                type="button"
-                                onClick={() => setFileToDelete(file)}
-                                className="p-1.5 rounded-lg text-[#FFBAC7]/60 hover:text-rose-300 hover:bg-rose-950/60 border border-transparent hover:border-rose-500/30 transition-colors cursor-pointer"
-                                title={
-                                  isRegistered
-                                    ? "File is registered in database. Unregister before deleting."
-                                    : "Delete document from storage"
-                                }
-                              >
-                                <Trash2 size={14} />
                               </button>
                             </div>
                           </td>
@@ -1173,43 +821,8 @@ export default function AdminDashboard() {
       </div>
 
       {/* =========================================================
-          6. MODALS
+          4. EXTRACT SKILLS MODAL
       ========================================================== */}
-      {/* 6.1 Register Document Modal */}
-      {fileToRegister && (
-        <RegisterDocumentModal
-          file={fileToRegister}
-          isOpen={Boolean(fileToRegister)}
-          onClose={() => setFileToRegister(null)}
-          onSuccess={() => {
-            fetchFiles();
-            fetchRegisteredDocs();
-          }}
-        />
-      )}
-
-      {/* 6.2 Add Occupation Modal */}
-      {docToAddOccupation && (
-        <AddOccupationModal
-          doc={docToAddOccupation}
-          document={docToAddOccupation}
-          isOpen={Boolean(docToAddOccupation)}
-          onClose={() => setDocToAddOccupation(null)}
-          onSuccess={() => fetchRegisteredDocs()}
-        />
-      )}
-
-      {/* 6.3 Text Preview Modal */}
-      {docToPreviewText && (
-        <TextPreviewModal
-          doc={docToPreviewText}
-          document={docToPreviewText}
-          isOpen={Boolean(docToPreviewText)}
-          onClose={() => setDocToPreviewText(null)}
-        />
-      )}
-
-      {/* 6.4 Extract Skills Modal */}
       {docToExtractSkills && (
         <ExtractSkillsModal
           doc={docToExtractSkills}
@@ -1219,173 +832,6 @@ export default function AdminDashboard() {
           onSuccess={() => fetchRegisteredDocs()}
         />
       )}
-
-      {/* 6.5 Delete Pending Evidence Confirmation Modal */}
-      {docToDeletePending &&
-        typeof window !== 'undefined' &&
-        window.document?.body &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div
-              className="relative w-full max-w-md rounded-3xl border border-[#850E35]/60 p-6 sm:p-7 shadow-2xl text-left"
-              style={{ backgroundColor: '#1C040E' }}
-            >
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-400">
-                    <RotateCcw size={20} />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-white">Delete Pending Evidence?</h4>
-                    <p className="text-xs text-[#FFBAC7]/70">Clears unverified evidence rows.</p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setDocToDeletePending(null)}
-                  disabled={isDeletingPending}
-                  className="rounded-lg p-1.5 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="my-4 p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1.5 text-xs">
-                <p className="font-bold text-white truncate">
-                  {docToDeletePending.document_name}
-                </p>
-                <p className="text-[10px] font-mono text-[#FFBAC7]/50 truncate">
-                  Document ID: {docToDeletePending.document_id}
-                </p>
-              </div>
-
-              <p className="text-xs text-[#FFBAC7]/80 leading-relaxed mb-6">
-                This will delete <strong>ONLY</strong> the skill evidence rows with status <code>pending</code> extracted from this document, allowing you to re-run extraction. Any verified rows will <strong>NOT</strong> be affected.
-              </p>
-
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDocToDeletePending(null)}
-                  disabled={isDeletingPending}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#FFBAC7] hover:text-white bg-[#18030C] hover:bg-[#250514] border border-[#850E35]/40 transition-colors"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={confirmDeletePendingEvidence}
-                  disabled={isDeletingPending}
-                  className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-700 to-rose-600 hover:brightness-110 shadow-lg shadow-rose-900/40 transition-all cursor-pointer disabled:opacity-60"
-                >
-                  {isDeletingPending ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin text-white" />
-                      <span>Deleting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw size={14} />
-                      <span>Confirm Delete</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          window.document.body
-        )}
-
-      {/* 6.6 Delete Document Confirmation Modal */}
-      {fileToDelete &&
-        typeof window !== 'undefined' &&
-        window.document?.body &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div
-              className="relative w-full max-w-md rounded-3xl border border-[#850E35]/60 p-6 sm:p-7 shadow-2xl text-left"
-              style={{ backgroundColor: '#1C040E' }}
-            >
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-400">
-                    <Trash2 size={20} />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-white">Delete Industry Document?</h4>
-                    <p className="text-xs text-[#FFBAC7]/70">This action cannot be undone.</p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFileToDelete(null)}
-                  disabled={isDeleting}
-                  className="rounded-lg p-1.5 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="my-4 p-3.5 rounded-xl bg-[#140209] border border-[#850E35]/40 space-y-1.5 text-xs">
-                <p className="font-bold text-white truncate" title={fileToDelete.display_name}>
-                  {fileToDelete.display_name}
-                </p>
-                <div className="flex items-center gap-3 text-[#FFBAC7]/70 text-[11px]">
-                  <span>Category: {CATEGORY_LABELS[fileToDelete.category] || fileToDelete.category}</span>
-                  <span>•</span>
-                  <span>{getReadableFileSize(fileToDelete.size_bytes)}</span>
-                </div>
-                <p className="text-[10px] font-mono text-[#FFBAC7]/50 truncate">
-                  Path: {fileToDelete.storage_path}
-                </p>
-              </div>
-
-              {registeredPathSet.has(fileToDelete.storage_path) ? (
-                <div className="p-3 mb-4 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs">
-                  <strong>Notice:</strong> This file is registered in the database. The backend will refuse deletion until it is unregistered.
-                </div>
-              ) : (
-                <p className="text-xs text-[#FFBAC7]/80 leading-relaxed mb-6">
-                  Are you sure you want to permanently delete this PDF from the private storage bucket?
-                </p>
-              )}
-
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFileToDelete(null)}
-                  disabled={isDeleting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#FFBAC7] hover:text-white bg-[#18030C] hover:bg-[#250514] border border-[#850E35]/40 transition-colors"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={confirmDeleteFile}
-                  disabled={isDeleting}
-                  className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-700 to-rose-600 hover:brightness-110 shadow-lg shadow-rose-900/40 transition-all cursor-pointer disabled:opacity-60"
-                >
-                  {isDeleting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin text-white" />
-                      <span>Deleting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={14} />
-                      <span>Confirm Delete</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          window.document.body
-        )}
     </div>
   );
 }

@@ -261,9 +261,6 @@ export async function changeAdminPassword({ current_password, new_password }) {
 export const ALLOWED_INDUSTRY_CATEGORIES = [
   { value: 'qualification_file', label: 'Qualification File' },
   { value: 'job_description', label: 'Job Description' },
-  { value: 'certification_guide', label: 'Certification Guide' },
-  { value: 'hiring_assessment_syllabus', label: 'Hiring Assessment Syllabus' },
-  { value: 'industry_report', label: 'Industry Report' },
 ];
 
 /**

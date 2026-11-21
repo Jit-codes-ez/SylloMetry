@@ -24,6 +24,9 @@ import {
   Cpu,
   BookmarkCheck,
   ShieldAlert,
+  RotateCcw,
+  RotateCcwClock,
+  RotateCw,
 } from 'lucide-react';
 import {
   getDocumentExtractionPreview,
@@ -510,11 +513,6 @@ export default function ExtractSkillsModal({
                 <h3 className="text-base sm:text-lg font-bold text-white tracking-wide truncate">
                   Extraction & Skill Review
                 </h3>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-[#3A1024] text-[#FFA8B8] border border-[#850E35]/60">
-                  {docItem.document_type === 'job_description'
-                    ? 'Job Description'
-                    : 'Qualification File'}
-                </span>
               </div>
               <p className="text-xs text-[#FFBAC7]/70 truncate font-mono mt-0.5">
                 {docItem.document_name}
@@ -584,7 +582,7 @@ export default function ExtractSkillsModal({
             >
               <Sparkles
                 size={15}
-                className={isExtractingSkills ? 'animate-spin text-[#F5C563]' : ''}
+                className={isExtractingSkills ? 'text-[#F5C563]' : ''}
               />
               <span>Skill Extraction</span>
               <span className="px-2 py-0.5 rounded-full bg-[#36081B] text-[11px] font-mono text-[#F5C563]">
@@ -694,13 +692,16 @@ export default function ExtractSkillsModal({
                   {/* State 1: In-Flight Skill Extraction Progress */}
                   {isExtractingSkills && (
                     <div className="p-8 rounded-3xl bg-[#200410] border border-[#F5C563]/40 space-y-6 text-center shadow-xl">
-                      <div className="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-[#F5C563] to-[#D99B26] text-[#2B0712] shadow-lg animate-pulse">
-                        <Sparkles size={28} />
+                      <div className="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-[#F5C563] to-[#D99B26] text-[#2B0712] shadow-lg ">
+                        <RotateCw
+                          size={30}
+                          className={isExtractingSkills ? 'animate-spin text-[#200410]' : ''}
+                        />
                       </div>
 
                       <div className="space-y-1.5 max-w-lg mx-auto">
                         <h4 className="text-base font-bold text-white tracking-wide">
-                          Extracting Technical Skills with Gemini
+                          Extracting Technical Skills
                         </h4>
                         <p className="text-xs text-[#FFBAC7]/70 leading-relaxed font-mono">
                           {extractionProgress.current_step ||
@@ -747,7 +748,7 @@ export default function ExtractSkillsModal({
                       </div>
 
                       <p className="text-[11px] text-[#FFBAC7]/50 italic">
-                        Preserving exact quotations, character matching, and confidence scores across 2-page windows.
+                        Preserving exact quotations, character matching, and confidence ... 
                       </p>
                     </div>
                   )}

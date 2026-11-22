@@ -27,6 +27,7 @@ import {
   RotateCcw,
   RotateCcwClock,
   RotateCw,
+  Brain,
 } from 'lucide-react';
 import {
   getDocumentExtractionPreview,
@@ -34,7 +35,39 @@ import {
   startSkillExtraction,
   getExtractionJobStatus,
   saveDocumentSkills,
+  getGeminiModels,
+  getDocumentExtractionStatus,
 } from '@/lib/adminAuth';
+
+const FALLBACK_GEMINI_MODELS = [
+  {
+    model_key: 'gemini-3.5-flash-lite',
+    model_id: 'gemini-3.5-flash-lite',
+    provider: 'Google Gemini',
+    display_name: 'Gemini 3.5 Flash-Lite',
+    tag: 'Better',
+    description: 'Alternative high-throughput model offering an improved balance of speed, cost efficiency, and extraction accuracy.',
+    is_enabled: true,
+  },
+  {
+    model_key: 'gpt-oss-120b',
+    model_id: 'openai/gpt-oss-120b',
+    provider: 'Groq',
+    display_name: 'GPT-OSS 120B (Groq)',
+    tag: 'Primary',
+    description: 'A large open-weight reasoning model for structured technical skill and competency extraction.',
+    is_enabled: true,
+  },
+  {
+    model_key: 'gemini-3.1-flash-lite',
+    model_id: 'gemini-3.1-flash-lite',
+    provider: 'Google Gemini',
+    display_name: 'Gemini 3.1 Flash-Lite',
+    tag: null,
+    description: 'Lightweight and responsive extraction option optimized for rapid document processing and low latency.',
+    is_enabled: true,
+  },
+];
 
 export default function ExtractSkillsModal({
   doc,
@@ -81,6 +114,12 @@ export default function ExtractSkillsModal({
   const [extractedSkills, setExtractedSkills] = useState([]);
   const [isSkillsExtracted, setIsSkillsExtracted] = useState(false);
 
+  // Multi-Model AI Extraction States (Gemini & Groq)
+  const [availableModels, setAvailableModels] = useState(FALLBACK_GEMINI_MODELS);
+  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite'); // Gemini 3.5 Flash-Lite default
+  const [activeJobModelDisplayName, setActiveJobModelDisplayName] = useState(null);
+  const [activeJobExtractionMethod, setActiveJobExtractionMethod] = useState(null);
+
   // Part 5: Transactional Skill Saving States
   const [isSavingSkills, setIsSavingSkills] = useState(false);
   const [saveSkillsSuccess, setSaveSkillsSuccess] = useState(null);
@@ -99,6 +138,72 @@ export default function ExtractSkillsModal({
   // Polling ref for cleanup
   const pollingRef = useRef(null);
 
+  const startPollingJob = (jobId, fallbackModelDisplayName = null, fallbackExtMethod = null) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const statusRes = await getExtractionJobStatus(jobId);
+
+        if (statusRes.progress) {
+          setExtractionProgress(statusRes.progress);
+        }
+        if (statusRes.selected_model) {
+          setActiveJobModelDisplayName(statusRes.selected_model);
+        }
+        if (statusRes.extraction_method) {
+          setActiveJobExtractionMethod(statusRes.extraction_method);
+        }
+
+        if (
+          statusRes.status === 'completed' ||
+          statusRes.status === 'completed_with_warnings' ||
+          statusRes.status === 'done'
+        ) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setIsExtractingSkills(false);
+          setIsSkillsExtracted(true);
+
+          const finalModelName = statusRes.selected_model || fallbackModelDisplayName || 'Gemini';
+          const finalExtMethod = statusRes.extraction_method || fallbackExtMethod;
+          if (finalModelName) setActiveJobModelDisplayName(finalModelName);
+          if (finalExtMethod) setActiveJobExtractionMethod(finalExtMethod);
+
+          const rawSkills = statusRes.extracted_skills || [];
+          const mappedSkills = rawSkills.map((s, idx) => ({
+            temp_id: s.temp_id || `skill_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+            skill_name: String(s.skill_name || ''),
+            skill_type: String(s.skill_type || 'tool').toLowerCase(),
+            skill_category: String(s.skill_category || ''),
+            description: String(s.description || ''),
+            depth_cue: String(s.depth_cue || ''),
+            raw_phrase: String(s.raw_phrase || ''),
+            evidence_quote: String(s.evidence_quote || ''),
+            page_number: s.page_number ?? 1,
+            verified_page_number: s.verified_page_number ?? s.page_number ?? 1,
+            quote_validation_status: String(s.quote_validation_status || 'exact_page_match'),
+            section_name: String(s.section_name || ''),
+            confidence_score: typeof s.confidence_score === 'number' ? s.confidence_score : (s.confidence ?? 0.0),
+            aliases: Array.isArray(s.aliases) ? s.aliases : [],
+            extraction_method: s.extraction_method || finalExtMethod || `llm/${statusRes.model_key || 'gemini-3.1-flash-lite'}/v2`,
+          }));
+
+          setExtractedSkills(mappedSkills);
+        } else if (statusRes.status === 'failed') {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setIsExtractingSkills(false);
+          setExtractionError(
+            statusRes.error || 'Skill extraction failed. Please retry.'
+          );
+        }
+      } catch (pollErr) {
+        console.error('Error polling extraction job:', pollErr);
+      }
+    }, 2000);
+  };
+
   // Clear polling interval on unmount
   useEffect(() => {
     return () => {
@@ -109,7 +214,7 @@ export default function ExtractSkillsModal({
     };
   }, []);
 
-  // Fetch extraction preview on modal open (Part 3)
+  // Fetch extraction preview, allowlisted models, and existing job status on modal open
   useEffect(() => {
     let isMounted = true;
 
@@ -157,6 +262,67 @@ export default function ExtractSkillsModal({
     }
 
     loadExtractionData();
+
+    // Fetch allowlisted models from backend
+    getGeminiModels()
+      .then((res) => {
+        if (isMounted && res && res.models && res.models.length > 0) {
+          setAvailableModels(res.models);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load Gemini models from backend, using defaults:', err);
+      });
+
+    // Check if an extraction job is active or completed for this document
+    getDocumentExtractionStatus(docItem.document_id)
+      .then((statusRes) => {
+        if (!isMounted) return;
+        const latest = statusRes?.latest_job;
+        if (latest) {
+          const mName = latest.summary_data?.selected_model || latest.selected_model;
+          const mKey = latest.summary_data?.model_key || latest.model_key;
+          const extMethod = latest.summary_data?.extraction_method || latest.extraction_method;
+          if (mName) setActiveJobModelDisplayName(mName);
+          if (extMethod) setActiveJobExtractionMethod(extMethod);
+          if (mKey) setSelectedModel(mKey);
+
+          if (latest.status === 'in_progress' || latest.status === 'running') {
+            setIsExtractingSkills(true);
+            setExtractionJobId(latest.job_id);
+            setActiveTab('skills');
+            startPollingJob(latest.job_id, mName, extMethod);
+          } else if (
+            (latest.status === 'completed' || latest.status === 'completed_with_warnings' || latest.status === 'done') &&
+            latest.extraction_data &&
+            latest.extraction_data.length > 0
+          ) {
+            setIsSkillsExtracted(true);
+            const rawSkills = latest.extraction_data || [];
+            const mappedSkills = rawSkills.map((s, idx) => ({
+              temp_id: s.temp_id || `skill_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+              skill_name: String(s.skill_name || ''),
+              skill_type: String(s.skill_type || 'tool').toLowerCase(),
+              skill_category: String(s.skill_category || ''),
+              description: String(s.description || ''),
+              depth_cue: String(s.depth_cue || ''),
+              raw_phrase: String(s.raw_phrase || ''),
+              evidence_quote: String(s.evidence_quote || ''),
+              page_number: s.page_number ?? 1,
+              verified_page_number: s.verified_page_number ?? s.page_number ?? 1,
+              quote_validation_status: String(s.quote_validation_status || 'exact_page_match'),
+              section_name: String(s.section_name || ''),
+              confidence_score: typeof s.confidence_score === 'number' ? s.confidence_score : (s.confidence ?? 0.0),
+              aliases: Array.isArray(s.aliases) ? s.aliases : [],
+              extraction_method: s.extraction_method || extMethod || `llm/${mKey || 'gemini-3.1-flash-lite'}/v2`,
+            }));
+            setExtractedSkills(mappedSkills);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not check extraction status:', err);
+      });
 
     return () => {
       isMounted = false;
@@ -301,6 +467,12 @@ export default function ExtractSkillsModal({
   const handleStartSkillExtraction = async () => {
     if (!isSubmitted) return;
 
+    if (!selectedModel) {
+      setActiveTab('skills');
+      setExtractionError('Please select an AI extraction model before starting.');
+      return;
+    }
+
     // Switch to skills tab immediately
     setActiveTab('skills');
     setIsExtractingSkills(true);
@@ -308,68 +480,25 @@ export default function ExtractSkillsModal({
     setExtractionProgress({
       windows_done: 0,
       total_windows: 0,
-      current_step: 'Initiating Gemini extraction...',
+      current_step: 'Initiating AI skill extraction...',
     });
 
     try {
-      // Start skill extraction background job
-      const startRes = await startSkillExtraction(docItem.document_id, false);
+      const chosenModelObj = availableModels.find((m) => m.model_key === selectedModel);
+      const chosenName = chosenModelObj?.display_name || selectedModel;
+      setActiveJobModelDisplayName(chosenName);
+
+      // Start skill extraction background job with admin-selected model
+      const startRes = await startSkillExtraction(docItem.document_id, false, selectedModel);
       const jobId = startRes.job_id;
       setExtractionJobId(jobId);
 
-      // Start polling for extraction progress
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      const jobModelName = startRes.selected_model || chosenName;
+      const jobExtMethod = startRes.extraction_method;
+      setActiveJobModelDisplayName(jobModelName);
+      if (jobExtMethod) setActiveJobExtractionMethod(jobExtMethod);
 
-      pollingRef.current = setInterval(async () => {
-        try {
-          const statusRes = await getExtractionJobStatus(jobId);
-
-          if (statusRes.progress) {
-            setExtractionProgress(statusRes.progress);
-          }
-
-          if (
-            statusRes.status === 'completed' ||
-            statusRes.status === 'completed_with_warnings' ||
-            statusRes.status === 'done'
-          ) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-            setIsExtractingSkills(false);
-            setIsSkillsExtracted(true);
-
-            // Populate extracted skills for review with safe fallback keys
-            const rawSkills = statusRes.extracted_skills || [];
-            const mappedSkills = rawSkills.map((s, idx) => ({
-              temp_id: s.temp_id || `skill_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
-              skill_name: String(s.skill_name || ''),
-              skill_type: String(s.skill_type || 'tool').toLowerCase(),
-              skill_category: String(s.skill_category || ''),
-              description: String(s.description || ''),
-              depth_cue: String(s.depth_cue || ''),
-              raw_phrase: String(s.raw_phrase || ''),
-              evidence_quote: String(s.evidence_quote || ''),
-              page_number: s.page_number ?? 1,
-              verified_page_number: s.verified_page_number ?? s.page_number ?? 1,
-              quote_validation_status: String(s.quote_validation_status || 'exact_page_match'),
-              section_name: String(s.section_name || ''),
-              confidence_score: typeof s.confidence_score === 'number' ? s.confidence_score : (s.confidence ?? 0.0),
-              aliases: Array.isArray(s.aliases) ? s.aliases : [],
-            }));
-
-            setExtractedSkills(mappedSkills);
-          } else if (statusRes.status === 'failed') {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-            setIsExtractingSkills(false);
-            setExtractionError(
-              statusRes.error || 'Skill extraction failed. Please retry.'
-            );
-          }
-        } catch (pollErr) {
-          console.error('Error polling extraction job:', pollErr);
-        }
-      }, 2000);
+      startPollingJob(jobId, jobModelName, jobExtMethod);
     } catch (err) {
       setIsExtractingSkills(false);
       setExtractionError(
@@ -445,6 +574,16 @@ export default function ExtractSkillsModal({
     } finally {
       setIsSavingSkills(false);
     }
+  };
+
+  // Handle Re-Extract: Return to the Extract Skills (model selection) page
+  const handleReExtract = () => {
+    setActiveTab('skills');
+    setIsSkillsExtracted(false);
+    setIsSkillsSaved(false);
+    setSaveSkillsSuccess(null);
+    setSaveSkillsError(null);
+    setExtractionError(null);
   };
 
   // Filter skills by search query and skill_type
@@ -699,7 +838,11 @@ export default function ExtractSkillsModal({
                         />
                       </div>
 
-                      <div className="space-y-1.5 max-w-lg mx-auto">
+                      <div className="space-y-2 max-w-lg mx-auto">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#36081B] border border-[#F5C563]/40 text-[#F5C563] text-xs font-semibold mx-auto">
+                          <Brain size={13} />
+                          <span>Active Model: <strong>{activeJobModelDisplayName || availableModels.find((m) => m.model_key === selectedModel)?.display_name || 'AI Model'}</strong></span>
+                        </div>
                         <h4 className="text-base font-bold text-white tracking-wide">
                           Extracting Technical Skills
                         </h4>
@@ -748,7 +891,7 @@ export default function ExtractSkillsModal({
                       </div>
 
                       <p className="text-[11px] text-[#FFBAC7]/50 italic">
-                        Preserving exact quotations, character matching, and confidence ... 
+                        Model locked for this extraction job. Preserving exact quotations, character matching, and confidence.
                       </p>
                     </div>
                   )}
@@ -782,33 +925,144 @@ export default function ExtractSkillsModal({
                     </div>
                   )}
 
-                  {/* State 3: Not Started Yet Prompt */}
+                  {/* State 3: Admin-Selectable Multi-Model AI Extraction */}
                   {!isExtractingSkills && !extractionError && !isSkillsExtracted && (
-                    <div className="p-8 rounded-3xl bg-[#200410] border border-[#850E35]/40 text-center space-y-4">
-                      <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-[#36081B] text-[#F5C563] border border-[#850E35]/60 shadow-md">
-                        <Sparkles size={24} />
+                    <div className="p-6 sm:p-8 rounded-3xl bg-[#200410] border border-[#850E35]/40 space-y-6 text-left shadow-lg">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#850E35]/40 pb-5">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-white font-bold text-base">
+                            <Sparkles size={18} className="text-[#F5C563]" />
+                            <h4>Select AI Extraction Model</h4>
+                          </div>
+                          <p className="text-xs text-[#FFBAC7]/70">
+                            Select one of the supported AI models below before starting technical skill extraction.
+                          </p>
+                        </div>
                       </div>
-                      <div className="space-y-1.5 max-w-md mx-auto">
-                        <h4 className="text-base font-bold text-white">
-                          Ready for Technical Skill Extraction
-                        </h4>
-                        <p className="text-xs text-[#FFBAC7]/70 leading-relaxed">
-                          Occupations have been reviewed and submitted. You can now launch
-                          Gemini 2-page window extraction to extract tools, techniques, concepts,
-                          and domain knowledge with verified evidence quotes.
-                        </p>
+
+                      {/* 3 Selectable Radio Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                        {availableModels.map((model) => {
+                          const isSelected = selectedModel === model.model_key;
+                          const providerName =
+                            model.provider ||
+                            (model.model_id?.startsWith('openai') ? 'Groq' : 'Google Gemini');
+                          return (
+                            <div
+                              key={model.model_key}
+                              onClick={() => {
+                                if (!isExtractingSkills) {
+                                  setSelectedModel(model.model_key);
+                                  setExtractionError(null);
+                                }
+                              }}
+                              className={`relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer select-none ${
+                                isSelected
+                                  ? 'bg-gradient-to-b from-[#3D0A1E] to-[#260513] border-[#F5C563] shadow-lg shadow-[#F5C563]/10 ring-1 ring-[#F5C563]'
+                                  : 'bg-[#18030C]/90 hover:bg-[#250514] border-[#850E35]/40 hover:border-[#C73659]/70 text-[#FFBAC7]/70'
+                              }`}
+                            >
+                              <div className="space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {model.tag && (
+                                      <span
+                                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                                          model.tag === 'Primary'
+                                            ? 'bg-[#F5C563]/20 border-[#F5C563]/60 text-[#F5C563]'
+                                            : model.tag === 'Better'
+                                            ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                                            : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                                        }`}
+                                      >
+                                        {model.tag}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] font-medium tracking-wide px-2 py-0.5 rounded-md bg-[#2B0715] border border-[#850E35]/40 text-[#FFBAC7]/80">
+                                      {providerName}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className={`h-4 w-4 rounded-full border flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? 'border-[#F5C563] bg-[#F5C563]'
+                                        : 'border-[#FFBAC7]/40 bg-[#120208]'
+                                    }`}
+                                  >
+                                    {isSelected && (
+                                      <div className="h-1.5 w-1.5 rounded-full bg-[#200410]" />
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h5
+                                    className={`text-sm font-bold tracking-wide transition-colors ${
+                                      isSelected ? 'text-white' : 'text-[#FFBAC7]'
+                                    }`}
+                                  >
+                                    {model.display_name}
+                                  </h5>
+                                  <p className="text-[11px] font-mono text-[#FFBAC7]/50 mt-0.5">
+                                    {model.model_id}
+                                  </p>
+                                </div>
+
+                                <p className="text-xs text-[#FFBAC7]/70 leading-relaxed">
+                                  {model.description}
+                                </p>
+                              </div>
+
+                              <div className="pt-4 mt-3 border-t border-[#850E35]/30 flex items-center justify-between text-[11px]">
+                                <span
+                                  className={
+                                    isSelected
+                                      ? 'text-[#F5C563] font-semibold'
+                                      : 'text-[#FFBAC7]/40'
+                                  }
+                                >
+                                  {isSelected ? 'Selected Model' : 'Click to Select'}
+                                </span>
+                                {isSelected && <Check size={14} className="text-[#F5C563]" />}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="pt-2">
-                        <button
-                          type="button"
-                          onClick={handleStartSkillExtraction}
-                          disabled={!isSubmitted}
-                          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] via-[#E8B145] to-[#D99B26] hover:brightness-105 border border-[#FCE19C]/60 text-[#2B0712] text-xs font-extrabold tracking-wide shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Play size={15} />
-                          <span>Start Skill Extraction</span>
-                        </button>
-                      </div>
+
+                      {/* Informative Selection Status Banner */}
+                      {!selectedModel ? (
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-[#2E0818]/70 border border-[#850E35]/50 text-xs text-[#FFA8B8]">
+                          <Info size={15} className="text-[#F5C563] shrink-0" />
+                          <span>
+                            Please select one of the AI models above to unlock skill extraction. No model is preselected by default.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#2D0717] border border-[#F5C563]/40 text-xs text-[#F5C563]">
+                          <div className="flex items-center gap-2">
+                            <Sparkles size={14} className="shrink-0" />
+                            <span>
+                              Ready to extract with{' '}
+                              <strong>
+                                {
+                                  availableModels.find(
+                                    (m) => m.model_key === selectedModel
+                                  )?.display_name
+                                }
+                              </strong>
+                            </span>
+                          </div>
+                          <span className="font-mono text-[11px] text-[#FFBAC7]/70">
+                            llm/
+                            {
+                              availableModels.find((m) => m.model_key === selectedModel)
+                                ?.model_id
+                            }
+                            /v2
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -861,14 +1115,20 @@ export default function ExtractSkillsModal({
                       </div>
 
                       {/* Review State Summary Header */}
-                      <div className="flex items-center justify-between px-1 text-xs text-[#FFBAC7]/70">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 text-xs text-[#FFBAC7]/70">
                         <span>
                           Showing <strong className="text-white">{filteredSkills.length}</strong> of{' '}
                           <strong className="text-white">{extractedSkills.length}</strong> extracted skills
                         </span>
-                        <span className="text-[11px] font-mono text-[#F5C563] bg-[#2E0818] border border-[#850E35]/50 px-2.5 py-0.5 rounded-full">
-                          Temporary Review State
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#36081B] border border-[#F5C563]/50 text-[#F5C563] text-[11px] font-semibold">
+                            <Brain size={12} />
+                            <span>Extracted via {activeJobModelDisplayName || availableModels.find((m) => m.model_key === selectedModel)?.display_name || 'AI Model'}</span>
+                          </span>
+                          <span className="text-[11px] font-mono text-[#F5C563] bg-[#2E0818] border border-[#850E35]/50 px-2.5 py-0.5 rounded-full">
+                            Temporary Review State
+                          </span>
+                        </div>
                       </div>
 
                       {/* Empty Skills State */}
@@ -1406,54 +1666,111 @@ export default function ExtractSkillsModal({
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             {activeTab === 'skills' ? (
               <>
-                {/* When on Skills Tab: Primary Action is "Save Skills" */}
-                {extractionError && (
-                  <button
-                    type="button"
-                    onClick={handleStartSkillExtraction}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
-                  >
-                    <RefreshCw size={14} />
-                    <span>Retry Extraction</span>
-                  </button>
-                )}
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveSkills}
-                    disabled={isSavingSkills || isSkillsSaved || !isSkillsExtracted || extractedSkills.length === 0}
-                    title={
-                      isSkillsSaved
-                        ? 'All reviewed skills and evidence have been saved to the database.'
-                        : 'Save reviewed skills and evidence to database'
-                    }
-                    className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-extrabold tracking-wide shadow-md transition-all ${
-                      isSkillsSaved
-                        ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 opacity-90 cursor-not-allowed pointer-events-none shadow-none'
-                        : isSavingSkills
-                        ? 'bg-emerald-600/80 border border-emerald-400/60 text-white opacity-70 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:brightness-110 border border-emerald-300/60 text-slate-950 shadow-emerald-950/40 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
-                    }`}
-                  >
-                    {isSavingSkills ? (
-                      <>
-                        <Loader2 size={15} className="animate-spin text-white" />
-                        <span>Saving Skills...</span>
-                      </>
-                    ) : isSkillsSaved ? (
-                      <>
-                        <CheckCircle2 size={15} className="text-emerald-400" />
-                        <span>Saved to Database</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check size={15} />
-                        <span>Save Skills</span>
-                      </>
+                {!isSkillsExtracted && !isExtractingSkills ? (
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {extractedSkills.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsSkillsExtracted(true)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#200410] border border-[#850E35]/60 hover:bg-[#36081B] text-xs font-semibold text-[#FFA8B8] hover:text-white transition-colors cursor-pointer"
+                      >
+                        <ArrowRight size={14} className="rotate-180" />
+                        <span>Return to Current Review ({extractedSkills.length} skills)</span>
+                      </button>
                     )}
-                  </button>
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={handleStartSkillExtraction}
+                      disabled={!isSubmitted || !selectedModel || isExtractingSkills}
+                      title={
+                        !isSubmitted
+                          ? 'Submit reviewed occupations first'
+                          : !selectedModel
+                          ? 'Select an AI model above to enable extraction'
+                          : `Start skill extraction with ${availableModels.find((m) => m.model_key === selectedModel)?.display_name}`
+                      }
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] via-[#E8B145] to-[#D99B26] hover:brightness-105 border border-[#FCE19C]/60 text-[#2B0712] text-xs font-extrabold tracking-wide shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Play size={15} />
+                      <span>
+                        {selectedModel
+                          ? `Start Extraction with ${
+                              availableModels.find(
+                                (m) => m.model_key === selectedModel
+                              )?.display_name
+                            }`
+                          : 'Select Model to Extract Skills'}
+                      </span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {extractionError && (
+                      <button
+                        type="button"
+                        onClick={handleStartSkillExtraction}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
+                      >
+                        <RefreshCw size={14} />
+                        <span>Retry Extraction</span>
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleReExtract}
+                        disabled={isSavingSkills || isExtractingSkills}
+                        title="Return to the Extract Skills page to select a model and re-run extraction"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#850E35]/60 bg-[#200410] hover:bg-[#36081B] text-[#FFA8B8] hover:text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <RotateCcw size={14} />
+                        <span>Re-Extract</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSaveSkills}
+                        disabled={
+                          isSavingSkills ||
+                          isSkillsSaved ||
+                          !isSkillsExtracted ||
+                          extractedSkills.length === 0
+                        }
+                        title={
+                          isSkillsSaved
+                            ? 'All reviewed skills and evidence have been saved to the database.'
+                            : 'Save reviewed skills and evidence to database'
+                        }
+                        className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-extrabold tracking-wide shadow-md transition-all ${
+                          isSkillsSaved
+                            ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 opacity-90 cursor-not-allowed pointer-events-none shadow-none'
+                            : isSavingSkills
+                            ? 'bg-emerald-600/80 border border-emerald-400/60 text-white opacity-70 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:brightness-110 border border-emerald-300/60 text-slate-950 shadow-emerald-950/40 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        {isSavingSkills ? (
+                          <>
+                            <Loader2 size={15} className="animate-spin text-white" />
+                            <span>Saving Skills...</span>
+                          </>
+                        ) : isSkillsSaved ? (
+                          <>
+                            <CheckCircle2 size={15} className="text-emerald-400" />
+                            <span>Saved to Database</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check size={15} />
+                            <span>Save Skills</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -1503,12 +1820,19 @@ export default function ExtractSkillsModal({
                 {/* Primary Action 2: Start Skill Extraction */}
                 <button
                   type="button"
-                  onClick={handleStartSkillExtraction}
+                  onClick={() => {
+                    setActiveTab('skills');
+                    if (selectedModel) {
+                      handleStartSkillExtraction();
+                    }
+                  }}
                   disabled={!isSubmitted || isSubmitting || isExtractingSkills}
                   title={
-                    isSubmitted
-                      ? 'Proceed to Gemini Skill Extraction'
-                      : 'Please Submit reviewed occupations first to enable this action'
+                    !isSubmitted
+                      ? 'Please Submit reviewed occupations first to enable this action'
+                      : !selectedModel
+                      ? 'Proceed to select AI extraction model'
+                      : `Start extraction with ${availableModels.find((m) => m.model_key === selectedModel)?.display_name}`
                   }
                   className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all shadow-md active:scale-95 ${
                     isSubmitted
@@ -1520,7 +1844,14 @@ export default function ExtractSkillsModal({
                     size={15}
                     className={isSubmitted ? 'text-[#590922]' : 'text-[#FFBAC7]/30'}
                   />
-                  <span>Start Skill Extraction</span>
+                  <span>
+                    {isSubmitted && selectedModel
+                      ? `Extract with ${
+                          availableModels.find((m) => m.model_key === selectedModel)
+                            ?.display_name
+                        }`
+                      : 'Start Skill Extraction'}
+                  </span>
                 </button>
               </>
             )}

@@ -114,13 +114,28 @@ class ExtractionSummary(BaseModel):
     sample_rejected_items: List[SampleRejectedItem] = Field(default_factory=list)
 
 
+class ExtractSkillsRequest(BaseModel):
+    """Request payload to initiate skill extraction with admin-selected AI model."""
+    model_key: str = Field(
+        ...,
+        description="Selected AI model key from the allowlist (e.g. 'gemini-3.5-flash-lite', 'gpt-oss-120b', 'gemini-3.1-flash-lite')",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="When true, executes extraction and validation without permanent saving",
+    )
+
+
 class JobStartResponse(BaseModel):
     """Response returned upon initiating a skill extraction job."""
     job_id: str
     status: str = "running"
     document_id: int
-    dry_run: bool
-    message: str
+    dry_run: bool = False
+    message: str = ""
+    selected_model: Optional[str] = None
+    model_key: Optional[str] = None
+    extraction_method: Optional[str] = None
 
 
 class ReviewSkillItem(BaseModel):
@@ -181,6 +196,10 @@ class ReviewSkillItem(BaseModel):
         default_factory=list,
         description="Technical aliases or abbreviations",
     )
+    extraction_method: Optional[str] = Field(
+        default=None,
+        description="Standardized extraction method identifier 'llm/<model-id>/<version>'",
+    )
 
 
 class JobStatusResponse(BaseModel):
@@ -191,10 +210,35 @@ class JobStatusResponse(BaseModel):
     summary: Optional[ExtractionSummary] = None
     session_id: Optional[str] = None
     error: Optional[str] = None
+    selected_model: Optional[str] = None
+    model_key: Optional[str] = None
+    extraction_method: Optional[str] = None
     extracted_skills: List[ReviewSkillItem] = Field(
         default_factory=list,
         description="List of extracted skills available for administrator review and editing",
     )
+
+
+class GeminiModelItem(BaseModel):
+    """Metadata of an allowlisted AI model (Gemini or Groq) for UI display."""
+    model_key: str
+    model_id: str
+    provider: str = Field(default="gemini", description="AI Provider: 'gemini' or 'groq'")
+    display_name: str
+    tag: Optional[str] = None
+    description: str
+    is_enabled: bool = True
+
+
+class GeminiModelsListResponse(BaseModel):
+    """Response containing list of supported AI models."""
+    success: bool = True
+    models: List[GeminiModelItem]
+
+
+# Aliases for broader AI models terminology
+AIModelItem = GeminiModelItem
+AIModelsListResponse = GeminiModelsListResponse
 
 
 class RetryJobResponse(BaseModel):

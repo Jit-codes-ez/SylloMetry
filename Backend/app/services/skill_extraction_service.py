@@ -10,8 +10,17 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from google import genai
 from google.genai import types
+import groq
 
 from app.core.config import settings
+from app.core.llm_models import (
+    PROMPT_VERSION,
+    SUPPORTED_GEMINI_MODELS,
+    GeminiModelConfig,
+    get_extraction_method_for_model,
+    get_model_display_name,
+    validate_model_key,
+)
 from app.core.supabase import get_supabase_admin_client
 from app.schemas.skill_extraction import (
     ExtractedSkillItem,
@@ -244,27 +253,48 @@ _jobs_lock = threading.Lock()
 _jobs: Dict[str, Dict[str, Any]] = {}
 
 
-def get_extraction_method() -> str:
-    """Returns the standardized extraction_method identifier."""
-    return f"llm/{settings.GEMINI_MODEL}/{PROMPT_VERSION}"
+def get_extraction_method(model_id: Optional[str] = None) -> str:
+    """Returns the standardized extraction_method identifier for a model."""
+    target_model = model_id or settings.GEMINI_MODEL
+    return get_extraction_method_for_model(target_model, PROMPT_VERSION)
 
 
 # -----------------------------------------------------------------------------
 # 1. Job Management (Persisted in SQLite and cached in-memory)
 # -----------------------------------------------------------------------------
 
+def is_job_running_for_document(document_id: int) -> bool:
+    """
+    Checks if an extraction job is currently in progress for the specified document
+    to prevent accidental duplicate extractions.
+    """
+    with _jobs_lock:
+        for job in _jobs.values():
+            if job.get("document_id") == document_id and job.get("status") in ("in_progress", "running"):
+                return True
+    return False
+
+
 def create_job_record(
     job_id: str,
     document_id: int,
     dry_run: bool,
+    model_key: str = "gemini-3.5-flash-lite",
+    model_id: str = "gemini-3.5-flash-lite",
+    selected_model: str = "Gemini 3.5 Flash-Lite",
     admin_email: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Initializes and registers a new extraction job in memory and persistent SQLite store."""
+    extraction_method = get_extraction_method_for_model(model_id, PROMPT_VERSION)
     record = {
         "job_id": job_id,
         "status": "in_progress",
         "document_id": document_id,
         "dry_run": dry_run,
+        "model_key": model_key,
+        "model_id": model_id,
+        "selected_model": selected_model,
+        "extraction_method": extraction_method,
         "admin_email": admin_email,
         "progress": {
             "windows_done": 0,
@@ -287,6 +317,12 @@ def create_job_record(
         total_windows=0,
         processed_windows=0,
         current_step="Initializing extraction...",
+        summary_data={
+            "model_key": model_key,
+            "model_id": model_id,
+            "selected_model": selected_model,
+            "extraction_method": extraction_method,
+        },
     )
     return record
 
@@ -306,8 +342,13 @@ def get_job_record(job_id: str) -> Optional[Dict[str, Any]]:
         return None
 
     # Reconstruct JobStatusResponse format
-    summary_data = db_job.get("summary_data")
-    summary = ExtractionSummary(**summary_data) if summary_data else None
+    summary_data = db_job.get("summary_data") or {}
+    summary = ExtractionSummary(**summary_data) if "pages_total" in summary_data else None
+
+    # Model metadata
+    selected_model = summary_data.get("selected_model") or "Gemini 3.5 Flash-Lite"
+    model_key = summary_data.get("model_key") or "gemini-3.5-flash-lite"
+    extraction_method = summary_data.get("extraction_method") or get_extraction_method_for_model(model_key)
 
     # Check if a review session exists for this document
     session_id = None
@@ -326,6 +367,9 @@ def get_job_record(job_id: str) -> Optional[Dict[str, Any]]:
         "status": db_job["status"],
         "document_id": db_job["document_id"],
         "dry_run": False,
+        "selected_model": selected_model,
+        "model_key": model_key,
+        "extraction_method": extraction_method,
         "progress": {
             "windows_done": db_job["processed_windows"],
             "total_windows": db_job["total_windows"],
@@ -486,18 +530,20 @@ def clean_skill_aliases(aliases: Optional[List[str]], skill_name: str) -> List[s
 
 
 # -----------------------------------------------------------------------------
-# 3. Gemini LLM Caller with Throttling and Exponential Backoff Retries
+# 3. Model Callers (Gemini & Groq) with Throttling and Exponential Backoff Retries
 # -----------------------------------------------------------------------------
 
 def call_gemini_window(
     client: genai.Client,
     window_prompt: str,
+    model_id: str = "gemini-3.5-flash-lite",
     system_instruction: str = SYSTEM_INSTRUCTION_QUALIFICATION,
     max_retries: int = 3,
 ) -> Optional[WindowExtractionLLMResponse]:
     """
     Calls Gemini API with structured JSON output and exponential backoff.
-    Retries up to max_retries on transient rate limits or network errors.
+    Uses the exact validated model_id selected by the administrator.
+    Retries up to max_retries on transient rate limits or network errors using the same model.
     """
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
@@ -512,7 +558,7 @@ def call_gemini_window(
     while attempt <= max_retries:
         try:
             response = client.models.generate_content(
-                model=settings.GEMINI_MODEL,
+                model=model_id,
                 contents=window_prompt,
                 config=config,
             )
@@ -524,25 +570,111 @@ def call_gemini_window(
                 data = json.loads(response.text)
                 return WindowExtractionLLMResponse(**data)
 
-            logger.warning("Empty response received from Gemini model.")
+            logger.warning("Empty response received from Gemini model '%s'.", model_id)
             return WindowExtractionLLMResponse(items=[], last_section_seen=None)
 
         except Exception as e:
             attempt += 1
             logger.warning(
-                "Gemini API attempt %d/%d failed: %s",
+                "Gemini model '%s' attempt %d/%d failed: %s",
+                model_id,
                 attempt,
                 max_retries + 1,
                 str(e),
             )
             if attempt > max_retries:
-                logger.error("Exceeded maximum retries (%d) for Gemini API call.", max_retries)
+                logger.error("Exceeded maximum retries (%d) for Gemini model '%s'.", max_retries, model_id)
                 return None
 
             time.sleep(backoff_seconds)
             backoff_seconds *= 2.0
 
     return None
+
+
+def call_groq_window(
+    client: Any,
+    window_prompt: str,
+    model_id: str = "openai/gpt-oss-120b",
+    system_instruction: str = SYSTEM_INSTRUCTION_QUALIFICATION,
+    max_retries: int = 3,
+) -> Optional[WindowExtractionLLMResponse]:
+    """
+    Calls Groq Chat Completions API with structured JSON output and exponential backoff.
+    Uses the exact validated model_id (openai/gpt-oss-120b) selected by the administrator.
+    Retries up to max_retries on transient rate limits, timeouts, or network errors using the same model.
+    """
+    messages = [
+        {"role": "system", "content": system_instruction},
+        {"role": "user", "content": window_prompt},
+    ]
+
+    attempt = 0
+    backoff_seconds = 2.0
+
+    while attempt <= max_retries:
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+
+            if response.choices and response.choices[0].message and response.choices[0].message.content:
+                raw_text = response.choices[0].message.content.strip()
+                data = json.loads(raw_text)
+                return WindowExtractionLLMResponse(**data)
+
+            logger.warning("Empty response received from Groq model '%s'.", model_id)
+            return WindowExtractionLLMResponse(items=[], last_section_seen=None)
+
+        except Exception as e:
+            attempt += 1
+            logger.warning(
+                "Groq model '%s' attempt %d/%d failed: %s",
+                model_id,
+                attempt,
+                max_retries + 1,
+                str(e),
+            )
+            if attempt > max_retries:
+                logger.error("Exceeded maximum retries (%d) for Groq model '%s'.", max_retries, model_id)
+                return None
+
+            time.sleep(backoff_seconds)
+            backoff_seconds *= 2.0
+
+    return None
+
+
+def call_model_window(
+    provider: str,
+    client: Any,
+    window_prompt: str,
+    model_id: str,
+    system_instruction: str = SYSTEM_INSTRUCTION_QUALIFICATION,
+    max_retries: int = 3,
+) -> Optional[WindowExtractionLLMResponse]:
+    """
+    Centralized dispatcher routing the window prompt to the appropriate AI provider (Groq or Gemini).
+    Never silently falls back to another provider or model.
+    """
+    if provider == "groq":
+        return call_groq_window(
+            client=client,
+            window_prompt=window_prompt,
+            model_id=model_id,
+            system_instruction=system_instruction,
+            max_retries=max_retries,
+        )
+    return call_gemini_window(
+        client=client,
+        window_prompt=window_prompt,
+        model_id=model_id,
+        system_instruction=system_instruction,
+        max_retries=max_retries,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -553,13 +685,15 @@ def run_skill_extraction_job(
     job_id: str,
     document_id: int,
     dry_run: bool,
+    model_key: str = "gemini-3.5-flash-lite",
+    model_id: str = "gemini-3.5-flash-lite",
     admin_email: Optional[str] = None,
 ) -> None:
     """
     Stage 1 Pure Extraction Pipeline:
     - Extracts PDF page text with PyMuPDF
     - Slices document into 2-page windows
-    - Queries Gemini with structured schema per window
+    - Queries the selected AI model (Groq GPT-OSS 120B or Gemini) in structured JSON per window
     - Programmatically validates fields and verifies evidence quotes against PDF
     - Tracks window failures and maintains complete extraction dataset
     - NO DIRECT PERMANENT DATABASE INSERTS
@@ -567,17 +701,80 @@ def run_skill_extraction_job(
     - Automatically initializes/updates persistent review session in Stage 2
     """
     start_time = time.time()
-    logger.info("Starting skill extraction job %s for document_id %d (dry_run=%s)", job_id, document_id, dry_run)
 
-    if not settings.GEMINI_API_KEY:
-        fail_job_record(job_id, "GEMINI_API_KEY is not configured on the backend.")
+    # Validate model configuration and determine provider
+    try:
+        model_cfg = validate_model_key(model_key)
+        provider = model_cfg.provider
+        model_id = model_cfg.model_id
+    except Exception as ve:
+        logger.error("Invalid model configuration for job %s: %s", job_id, str(ve))
+        fail_job_record(job_id, f"Invalid model configuration: {str(ve)}")
         save_extraction_job(
             job_id=job_id,
             document_id=document_id,
             status="failed",
-            error="GEMINI_API_KEY is not configured on the backend.",
+            error=f"Invalid model configuration: {str(ve)}",
         )
         return
+
+    extraction_method = get_extraction_method_for_model(model_id, PROMPT_VERSION)
+    logger.info(
+        "Starting skill extraction job %s for document_id %d with provider=%s, model=%s (id=%s, extraction_method=%s, dry_run=%s)",
+        job_id,
+        document_id,
+        provider,
+        model_key,
+        model_id,
+        extraction_method,
+        dry_run,
+    )
+
+    # Provider-specific credential checks and client initialization
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            fail_job_record(job_id, "GROQ_API_KEY is not configured on the backend.")
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                error="GROQ_API_KEY is not configured on the backend.",
+            )
+            return
+        try:
+            client = groq.Groq(api_key=settings.GROQ_API_KEY)
+        except Exception as e:
+            logger.exception("Failed to initialize Groq Client: %s", str(e))
+            fail_job_record(job_id, f"Failed to initialize Groq client: {str(e)}")
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                error=f"Failed to initialize Groq client: {str(e)}",
+            )
+            return
+    else:
+        if not settings.GEMINI_API_KEY:
+            fail_job_record(job_id, "GEMINI_API_KEY is not configured on the backend.")
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                error="GEMINI_API_KEY is not configured on the backend.",
+            )
+            return
+        try:
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        except Exception as e:
+            logger.exception("Failed to initialize Google GenAI Client: %s", str(e))
+            fail_job_record(job_id, f"Failed to initialize GenAI client: {str(e)}")
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                error=f"Failed to initialize GenAI client: {str(e)}",
+            )
+            return
 
     # Determine document type (qualification_file vs job_description) to select category-specific instructions
     admin_client = get_supabase_admin_client()
@@ -631,20 +828,6 @@ def run_skill_extraction_job(
     total_windows = len(windows)
     update_job_progress(job_id, 0, total_windows, f"Prepared {total_windows} windows for LLM analysis.")
 
-    # Initialize Gemini Client
-    try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    except Exception as e:
-        logger.exception("Failed to initialize Google GenAI Client: %s", str(e))
-        fail_job_record(job_id, f"Failed to initialize GenAI client: {str(e)}")
-        save_extraction_job(
-            job_id=job_id,
-            document_id=document_id,
-            status="failed",
-            error=f"Failed to initialize GenAI client: {str(e)}",
-        )
-        return
-
     # Metrics Counters & Datasets
     windows_processed = 0
     failed_windows: List[Dict[str, Any]] = []
@@ -675,8 +858,15 @@ def run_skill_extraction_job(
 
         window_prompt = "\n".join(prompt_parts)
 
-        # Call Gemini with retry and category-specific system instruction
-        llm_resp = call_gemini_window(client, window_prompt, system_instruction=system_instruction, max_retries=3)
+        # Call AI model with retry and category-specific system instruction
+        llm_resp = call_model_window(
+            provider=provider,
+            client=client,
+            window_prompt=window_prompt,
+            model_id=model_id,
+            system_instruction=system_instruction,
+            max_retries=3,
+        )
 
         if llm_resp is None:
             failed_windows.append({
@@ -765,6 +955,7 @@ def run_skill_extraction_job(
                     "confidence_score": round(confidence, 4),
                     "confidence": round(confidence, 4),
                     "aliases": clean_aliases,
+                    "extraction_method": extraction_method,
                 }
                 all_extracted_items.append(item_dict)
 
@@ -831,6 +1022,12 @@ def run_skill_extraction_job(
             logger.exception("Failed to initialize review session: %s", str(sess_err))
 
     # 6. Persist job record to SQLite
+    summary_dump = summary.model_dump()
+    summary_dump["model_id"] = model_id
+    summary_dump["model_key"] = model_key
+    summary_dump["selected_model"] = get_model_display_name(model_key)
+    summary_dump["extraction_method"] = extraction_method
+
     save_extraction_job(
         job_id=job_id,
         document_id=document_id,
@@ -841,7 +1038,7 @@ def run_skill_extraction_job(
         items_count=len(all_extracted_items),
         current_step="Extraction completed.",
         extraction_data=all_extracted_items,
-        summary_data=summary.model_dump(),
+        summary_data=summary_dump,
     )
 
     complete_job_record(job_id, job_status, summary, session_id=session_id, extracted_skills=all_extracted_items)
@@ -872,11 +1069,31 @@ def retry_failed_windows_for_job(job_id: str, admin_email: Optional[str] = None)
     if not failed_windows:
         return {"job_id": job_id, "message": "No failed windows to retry."}
 
+    summary_dict = db_job.get("summary_data") or {}
+    model_key = summary_dict.get("model_key")
+    model_id = summary_dict.get("model_id") or "gemini-3.5-flash-lite"
+    try:
+        model_cfg = validate_model_key(model_key or model_id)
+        provider = model_cfg.provider
+        model_id = model_cfg.model_id
+    except Exception:
+        provider = "groq" if ("gpt" in model_id.lower() or "openai" in model_id.lower()) else "gemini"
+
+    extraction_method = summary_dict.get("extraction_method") or get_extraction_method_for_model(model_id, PROMPT_VERSION)
+
     document_id = db_job["document_id"]
     pages = extract_pages(document_id)
     pages_by_num = {p["page_number"]: p for p in pages}
 
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            raise RuntimeError("GROQ_API_KEY is not configured on the backend.")
+        client = groq.Groq(api_key=settings.GROQ_API_KEY)
+    else:
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY is not configured on the backend.")
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
     existing_items = list(db_job.get("extraction_data") or [])
     newly_extracted_items: List[Dict[str, Any]] = []
     still_failed: List[Dict[str, Any]] = []
@@ -892,7 +1109,13 @@ def retry_failed_windows_for_job(job_id: str, admin_email: Optional[str] = None)
             prompt_parts.append(f"--- PAGE {p['page_number']} ---\n{p['text']}\n")
         prompt = "\n".join(prompt_parts)
 
-        llm_resp = call_gemini_window(client, prompt, max_retries=3)
+        llm_resp = call_model_window(
+            provider=provider,
+            client=client,
+            window_prompt=prompt,
+            model_id=model_id,
+            max_retries=3,
+        )
         if llm_resp is None:
             still_failed.append(fw)
         else:
@@ -922,6 +1145,7 @@ def retry_failed_windows_for_job(job_id: str, admin_email: Optional[str] = None)
                     "section_name": (raw_item.section_name or "").strip()[:255],
                     "confidence": max(0.0, min(1.0, float(raw_item.confidence or 0.0))),
                     "aliases": clean_aliases,
+                    "extraction_method": extraction_method,
                 }
                 newly_extracted_items.append(item_dict)
 

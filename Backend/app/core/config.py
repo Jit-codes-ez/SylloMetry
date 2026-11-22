@@ -66,6 +66,12 @@ class Settings(BaseSettings):
         description="Gemini model identifier used for extraction",
     )
 
+    # Groq LLM Configuration
+    GROQ_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Groq API key for GPT-OSS 120B skill extraction",
+    )
+
     @property
     def publishable_key(self) -> str:
         """Returns the publishable anon key, respecting alias if provided."""

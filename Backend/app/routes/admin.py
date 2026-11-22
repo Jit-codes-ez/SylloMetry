@@ -40,6 +40,9 @@ from app.schemas.industry_documents import (
 )
 from app.schemas.skill_extraction import (
     DeletePendingEvidenceResponse,
+    ExtractSkillsRequest,
+    GeminiModelItem,
+    GeminiModelsListResponse,
     JobStartResponse,
     JobStatusResponse,
     RetryJobResponse,
@@ -59,6 +62,11 @@ from app.schemas.industry_review import (
 from app.services.admin_service import AdminService
 from app.services.industry_storage_service import IndustryStorageService
 from app.services.industry_document_service import IndustryDocumentService
+from app.core.llm_models import (
+    get_extraction_method_for_model,
+    get_supported_models,
+    validate_model_key,
+)
 from app.services.pdf_extraction_service import (
     get_document_extraction_preview,
     get_document_text_preview,
@@ -68,6 +76,7 @@ from app.services.skill_saving_service import SkillSavingService
 from app.services.skill_extraction_service import (
     create_job_record,
     get_job_record,
+    is_job_running_for_document,
     run_skill_extraction_job,
     retry_failed_windows_for_job,
     delete_pending_evidence as svc_delete_pending_evidence,
@@ -547,6 +556,38 @@ async def save_occupations_batch(
 
 
 # ==============================================================================
+# Endpoint 19B: List Supported AI Models for Skill Extraction
+# GET /api/admin/gemini-models
+# ==============================================================================
+@router.get(
+    "/gemini-models",
+    response_model=GeminiModelsListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List Supported Extraction Models",
+    description="Returns the allowlisted models available for administrator-selected skill extraction.",
+)
+async def list_gemini_models(
+    current_admin: SafeAdmin = Depends(get_current_admin),
+) -> GeminiModelsListResponse:
+    models = get_supported_models()
+    return GeminiModelsListResponse(
+        success=True,
+        models=[
+            GeminiModelItem(
+                model_key=m.model_key,
+                model_id=m.model_id,
+                provider=m.provider,
+                display_name=m.display_name,
+                tag=m.tag,
+                description=m.description,
+                is_enabled=m.is_enabled,
+            )
+            for m in models
+        ],
+    )
+
+
+# ==============================================================================
 # Endpoint 20: Start Skill Extraction Background Job
 # POST /api/admin/industry-documents/{document_id}/extract-skills
 # ==============================================================================
@@ -555,11 +596,13 @@ async def save_occupations_batch(
     response_model=JobStartResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Initiate LLM Skill Extraction Job",
-    description="Starts an asynchronous job extracting technical skills with Gemini in 2-page windows.",
+    description="Starts an asynchronous job extracting technical skills with an admin-selected AI model in 2-page windows.",
 )
 async def extract_skills(
     document_id: int,
     background_tasks: BackgroundTasks,
+    payload: Optional[ExtractSkillsRequest] = None,
+    model_key: Optional[str] = Query(None, description="Allowlisted model key (e.g. 'gemini-3.5-flash-lite', 'gpt-oss-120b', 'gemini-3.1-flash-lite')"),
     dry_run: bool = Query(False, description="When true, executes LLM and validation without creating review session"),
     current_admin: SafeAdmin = Depends(get_current_admin),
 ) -> JobStartResponse:
@@ -570,7 +613,30 @@ async def extract_skills(
             detail="Database service unavailable.",
         )
 
-    # 1. Verify that the document exists and retrieve storage_path
+    # 1. Resolve and strictly validate requested AI model against allowlist
+    req_model_key = (payload.model_key if payload and payload.model_key else None) or model_key
+    if not req_model_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A supported AI model must be explicitly selected before starting skill extraction.",
+        )
+
+    try:
+        model_cfg = validate_model_key(req_model_key)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+
+    # 2. Prevent concurrent / duplicate extraction executions on the same document
+    if is_job_running_for_document(document_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An extraction job is already in progress for document ID {document_id}. Please wait for it to complete.",
+        )
+
+    # 3. Verify that the document exists and retrieve storage_path
     doc_res = (
         admin_client.table("industry_documents")
         .select("document_id, document_name, document_type, storage_path")
@@ -584,7 +650,7 @@ async def extract_skills(
             detail=f"Industry document with ID {document_id} not found.",
         )
 
-    # 2. Verify that occupation submission has succeeded
+    # 4. Verify that occupation submission has succeeded
     doc_occ_res = (
         admin_client.table("document_occupations")
         .select("id")
@@ -598,22 +664,39 @@ async def extract_skills(
             detail="Occupation submission is required before extracting skills. Please review and submit occupations first.",
         )
 
-    # 3. Start background skill extraction job
+    is_dry_run = (payload.dry_run if payload else False) or dry_run
+
+    # 5. Start background skill extraction job with selected verified model
     job_id = str(uuid.uuid4())
-    create_job_record(job_id=job_id, document_id=document_id, dry_run=dry_run, admin_email=current_admin.email)
+    create_job_record(
+        job_id=job_id,
+        document_id=document_id,
+        dry_run=is_dry_run,
+        model_key=model_cfg.model_key,
+        model_id=model_cfg.model_id,
+        selected_model=model_cfg.display_name,
+        admin_email=current_admin.email,
+    )
     background_tasks.add_task(
         run_skill_extraction_job,
         job_id=job_id,
         document_id=document_id,
-        dry_run=dry_run,
+        dry_run=is_dry_run,
+        model_key=model_cfg.model_key,
+        model_id=model_cfg.model_id,
         admin_email=current_admin.email,
     )
+
+    ext_method = get_extraction_method_for_model(model_cfg.model_id)
     return JobStartResponse(
         job_id=job_id,
         status="running",
         document_id=document_id,
-        dry_run=dry_run,
-        message=f"Skill extraction job initiated in background ({'DRY RUN' if dry_run else 'FOR REVIEW'}).",
+        dry_run=is_dry_run,
+        message=f"Skill extraction job initiated in background using {model_cfg.display_name} ({'DRY RUN' if is_dry_run else 'FOR REVIEW'}).",
+        selected_model=model_cfg.display_name,
+        model_key=model_cfg.model_key,
+        extraction_method=ext_method,
     )
 
 

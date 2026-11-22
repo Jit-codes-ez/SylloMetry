@@ -15,7 +15,8 @@ from app.services.skill_extraction_service import (
 
 logger = logging.getLogger("app.services.skill_saving")
 
-EXTRACTION_METHOD = "llm/gemini-3.1-flash-lite/v2"
+DEFAULT_EXTRACTION_METHOD = "llm/gemini-3.5-flash-lite/v2"
+
 
 
 def normalize_skill_name(name: str) -> str:
@@ -129,6 +130,7 @@ class SkillSavingService:
                 "evidence_text": evidence_text,
                 "page_number": page_num,
                 "aliases": cleaned_aliases,
+                "extraction_method": (getattr(item, "extraction_method", None) or "").strip()[:100] or DEFAULT_EXTRACTION_METHOD,
             })
 
         # 3. First, try atomic PostgreSQL RPC if configured in Supabase
@@ -279,13 +281,14 @@ class SkillSavingService:
                 if not real_skill_id:
                     continue
 
+                item_ext_method = item.get("extraction_method") or DEFAULT_EXTRACTION_METHOD
                 evidence_payload = {
                     "skill_id": real_skill_id,
                     "document_id": document_id,
                     "section_name": item["section_name"],
                     "evidence_text": item["evidence_text"],
                     "page_number": item["page_number"],
-                    "extraction_method": EXTRACTION_METHOD,
+                    "extraction_method": item_ext_method,
                     "raw_phrase": item["raw_phrase"],
                     "depth_cue": item["depth_cue"],
                 }

@@ -584,12 +584,41 @@ export async function getDocumentTextPreview(documentId, page = null) {
 }
 
 /**
- * 16. Start an LLM skill extraction background job for a registered document.
+ * 16B. Fetch allowlisted AI extraction models (Gemini & Groq) from the backend.
+ * @returns {Promise<{ success: boolean, models: Array<{ model_key: string, model_id: string, provider?: string, display_name: string, tag: string|null, description: string, is_enabled: boolean }> }>}
+ */
+export async function getGeminiModels() {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/admin/gemini-models`, {
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to fetch AI models.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+export const getExtractionModels = getGeminiModels;
+
+/**
+ * 16. Start an LLM skill extraction background job with an admin-selected AI model.
  * @param {number} documentId
  * @param {boolean} [dryRun=false]
- * @returns {Promise<{ job_id: string, status: string, document_id: number, dry_run: boolean, message: string }>}
+ * @param {string|null} [modelKey=null]
+ * @returns {Promise<{ job_id: string, status: string, document_id: number, dry_run: boolean, message: string, selected_model?: string, model_key?: string, extraction_method?: string }>}
  */
-export async function startSkillExtraction(documentId, dryRun = false) {
+export async function startSkillExtraction(documentId, dryRun = false, modelKey = null) {
   const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
   const headers = {
     'Content-Type': 'application/json',
@@ -598,11 +627,21 @@ export async function startSkillExtraction(documentId, dryRun = false) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
 
+  const queryParams = new URLSearchParams({ dry_run: Boolean(dryRun) });
+  if (modelKey) {
+    queryParams.append('model_key', modelKey);
+  }
+
+  const body = modelKey
+    ? JSON.stringify({ model_key: modelKey, dry_run: Boolean(dryRun) })
+    : JSON.stringify({ dry_run: Boolean(dryRun) });
+
   const response = await fetch(
-    `${API_BASE}/api/admin/industry-documents/${documentId}/extract-skills?dry_run=${Boolean(dryRun)}`,
+    `${API_BASE}/api/admin/industry-documents/${documentId}/extract-skills?${queryParams.toString()}`,
     {
       method: 'POST',
       headers,
+      body,
     }
   );
 
@@ -767,6 +806,35 @@ export async function saveDocumentSkills(documentId, skills) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errorMsg = data.detail || data.message || 'Failed to save skills and evidence.';
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+/**
+ * 19E. Get extraction job & review session status for a document.
+ * GET /api/admin/industry-documents/{document_id}/extraction-status
+ */
+export async function getDocumentExtractionStatus(documentId) {
+  const accessToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+  const headers = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/admin/industry-documents/${documentId}/extraction-status`,
+    {
+      headers,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMsg = data.detail || data.message || 'Failed to fetch extraction status.';
     const err = new Error(errorMsg);
     err.status = response.status;
     throw err;

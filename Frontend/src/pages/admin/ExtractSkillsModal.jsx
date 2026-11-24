@@ -28,6 +28,9 @@ import {
   RotateCcwClock,
   RotateCw,
   Brain,
+  Bell,
+  BellRing,
+  BellOff,
 } from 'lucide-react';
 import {
   getDocumentExtractionPreview,
@@ -38,6 +41,12 @@ import {
   getGeminiModels,
   getDocumentExtractionStatus,
 } from '@/lib/adminAuth';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  isNotificationSupported,
+  notifySkillExtractionTerminalState,
+} from '@/lib/skillExtractionNotification';
 
 import geminiLogo from '/logos/gemini.svg';
 import groqLogo from '/logos/groq.svg';
@@ -169,6 +178,14 @@ export default function ExtractSkillsModal({
   // Polling ref for cleanup
   const pollingRef = useRef(null);
 
+  // Desktop Notification Permission State for Skill Extraction Completion
+  const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission());
+
+  const handleToggleNotificationPermission = async () => {
+    const perm = await requestNotificationPermission();
+    setNotificationPermission(perm);
+  };
+
   const startPollingJob = (jobId, fallbackModelDisplayName = null, fallbackExtMethod = null) => {
     if (pollingRef.current) clearInterval(pollingRef.current);
 
@@ -221,13 +238,50 @@ export default function ExtractSkillsModal({
           }));
 
           setExtractedSkills(mappedSkills);
+
+          // Trigger native Windows desktop notification on terminal success / partial completion
+          notifySkillExtractionTerminalState({
+            jobId,
+            status: statusRes.status,
+            documentName: docItem.document_name,
+            documentId: docItem.document_id,
+            extractedCount: mappedSkills.length,
+            failedWindowsCount: statusRes.summary?.windows_failed || 0,
+            totalWindows: statusRes.summary?.windows_total || statusRes.progress?.total_windows || 0,
+            onNotificationClick: () => {
+              try { window.focus(); } catch {}
+              setActiveTab('skills');
+              window.dispatchEvent(
+                new CustomEvent('syllo:open-extraction-review', {
+                  detail: { documentId: docItem.document_id, jobId },
+                })
+              );
+            },
+          });
         } else if (statusRes.status === 'failed') {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
           setIsExtractingSkills(false);
-          setExtractionError(
-            statusRes.error || 'Skill extraction failed. Please retry.'
-          );
+          const failureMessage = statusRes.error || 'Skill extraction failed. Please retry.';
+          setExtractionError(failureMessage);
+
+          // Trigger native Windows desktop notification on terminal failure
+          notifySkillExtractionTerminalState({
+            jobId,
+            status: 'failed',
+            documentName: docItem.document_name,
+            documentId: docItem.document_id,
+            errorMessage: failureMessage,
+            onNotificationClick: () => {
+              try { window.focus(); } catch {}
+              setActiveTab('skills');
+              window.dispatchEvent(
+                new CustomEvent('syllo:open-extraction-review', {
+                  detail: { documentId: docItem.document_id, jobId },
+                })
+              );
+            },
+          });
         }
       } catch (pollErr) {
         console.error('Error polling extraction job:', pollErr);
@@ -690,14 +744,39 @@ export default function ExtractSkillsModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-2 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors cursor-pointer shrink-0 ml-3"
-            title="Close Review"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            {/* Desktop Notification Permission Control */}
+            {notificationPermission === 'default' && (
+              <button
+                type="button"
+                onClick={handleToggleNotificationPermission}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2D0717] hover:bg-[#3D0A1E] border border-[#F5C563]/40 hover:border-[#F5C563] text-[#F5C563] text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Click to enable Windows desktop notifications when skill extraction finishes"
+              >
+                <Bell size={13} />
+                <span className="hidden sm:inline">Enable Notifications</span>
+                <span className="sm:hidden">Notify</span>
+              </button>
+            )}
+            {notificationPermission === 'denied' && (
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#200410] border border-rose-500/40 text-rose-300/80 text-xs"
+                title="Notifications are blocked in your browser site settings. Enable them in site permissions if you wish to receive completion alerts."
+              >
+                <BellOff size={13} className="text-rose-400" />
+                <span className="hidden md:inline">Notifications Blocked</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-2 text-[#FFBAC7]/60 hover:text-white hover:bg-[#36081B] transition-colors cursor-pointer"
+              title="Close Review"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* =========================================================
@@ -921,6 +1000,24 @@ export default function ExtractSkillsModal({
                         </div>
                       </div>
 
+                      {/* Desktop Notification Status / Prompt */}
+                      <div className="max-w-md mx-auto pt-1">
+                        {notificationPermission === 'default' && (
+                          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#2A0615] border border-[#F5C563]/30 text-xs text-[#FFBAC7]/90 text-left">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Bell size={15} className="text-[#F5C563] shrink-0" />
+                              <span className="truncate">Notify me on Windows when extraction completes</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleToggleNotificationPermission}
+                              className="px-3 py-1 rounded-lg bg-[#F5C563] hover:bg-[#E8B145] text-[#2B0712] font-extrabold text-xs tracking-wide transition-colors shrink-0 cursor-pointer shadow-sm"
+                            >
+                              Enable
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <p className="text-[11px] text-[#FFBAC7]/50 italic">
                         Model locked for this extraction job. Preserving exact quotations, character matching, and confidence.
                       </p>

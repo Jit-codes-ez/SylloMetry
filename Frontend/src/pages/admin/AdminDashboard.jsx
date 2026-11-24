@@ -126,6 +126,36 @@ export default function AdminDashboard() {
     fetchRegisteredDocs();
   }, [fetchRegisteredDocs]);
 
+  // Handle opening review screen when user clicks an extraction desktop notification
+  useEffect(() => {
+    const handleOpenReview = async (event) => {
+      const docId = event.detail?.documentId;
+      if (!docId) return;
+
+      let targetDoc = registeredDocs.find((d) => d.document_id === docId);
+      if (!targetDoc) {
+        try {
+          const docs = await getRegisteredIndustryDocuments();
+          if (docs) {
+            setRegisteredDocs(docs);
+            targetDoc = docs.find((d) => d.document_id === docId);
+          }
+        } catch (err) {
+          console.warn('Could not refresh documents on notification click:', err);
+        }
+      }
+
+      if (targetDoc) {
+        setDocToExtractSkills(targetDoc);
+      }
+    };
+
+    window.addEventListener('syllo:open-extraction-review', handleOpenReview);
+    return () => {
+      window.removeEventListener('syllo:open-extraction-review', handleOpenReview);
+    };
+  }, [registeredDocs]);
+
   // Clean up progress timer on unmount
   useEffect(() => {
     return () => {

@@ -13,6 +13,13 @@ from google.genai import types
 import groq
 
 from app.core.config import settings
+from app.core.llm_error_classifier import (
+    ErrorCategory,
+    FatalExtractionError,
+    TransientExtractionError,
+    USER_FACING_ERROR_MESSAGES,
+    classify_llm_exception,
+)
 from app.core.llm_models import (
     PROMPT_VERSION,
     SUPPORTED_GEMINI_MODELS,
@@ -304,6 +311,7 @@ def create_job_record(
         "summary": None,
         "session_id": None,
         "error": None,
+        "error_category": None,
         "extracted_skills": [],
         "created_at": time.time(),
     }
@@ -378,6 +386,7 @@ def get_job_record(job_id: str) -> Optional[Dict[str, Any]]:
         "summary": summary,
         "session_id": session_id,
         "error": db_job["error"],
+        "error_category": summary_data.get("error_category"),
         "extracted_skills": extracted_skills,
     }
 
@@ -414,12 +423,14 @@ def complete_job_record(
             _jobs[job_id]["progress"]["windows_done"] = _jobs[job_id]["progress"]["total_windows"]
 
 
-def fail_job_record(job_id: str, error_msg: str) -> None:
-    """Marks a job as failed with an error message."""
+def fail_job_record(job_id: str, error_msg: str, error_category: Optional[str] = None) -> None:
+    """Marks a job as failed with a sanitized error message and category."""
     with _jobs_lock:
         if job_id in _jobs:
             _jobs[job_id]["status"] = "failed"
             _jobs[job_id]["error"] = error_msg
+            if error_category:
+                _jobs[job_id]["error_category"] = error_category
             _jobs[job_id]["progress"]["current_step"] = f"Failed: {error_msg}"
 
 
@@ -543,6 +554,7 @@ def call_gemini_window(
     """
     Calls Gemini API with structured JSON output and exponential backoff.
     Uses the exact validated model_id selected by the administrator.
+    Fails fast immediately on fatal errors (e.g. quota exhausted, auth/permission failure).
     Retries up to max_retries on transient rate limits or network errors using the same model.
     """
     config = types.GenerateContentConfig(
@@ -567,26 +579,77 @@ def call_gemini_window(
                 return response.parsed
 
             if response.text:
-                data = json.loads(response.text)
-                return WindowExtractionLLMResponse(**data)
+                try:
+                    data = json.loads(response.text)
+                    return WindowExtractionLLMResponse(**data)
+                except Exception as parse_err:
+                    attempt += 1
+                    logger.warning(
+                        "Gemini model '%s' JSON parse failed on attempt %d: %s",
+                        model_id,
+                        attempt,
+                        str(parse_err),
+                    )
+                    if attempt > max_retries:
+                        raise FatalExtractionError(
+                            category=ErrorCategory.INVALID_RESPONSE,
+                            message=USER_FACING_ERROR_MESSAGES[ErrorCategory.INVALID_RESPONSE],
+                            technical_details=f"Unrecoverable malformed JSON response from Gemini model {model_id}: {str(parse_err)}",
+                        ) from parse_err
+                    time.sleep(backoff_seconds)
+                    backoff_seconds *= 2.0
+                    continue
 
-            logger.warning("Empty response received from Gemini model '%s'.", model_id)
-            return WindowExtractionLLMResponse(items=[], last_section_seen=None)
-
-        except Exception as e:
+            logger.warning("Empty response received from Gemini model '%s' on attempt %d/%d.", model_id, attempt + 1, max_retries + 1)
             attempt += 1
-            logger.warning(
-                "Gemini model '%s' attempt %d/%d failed: %s",
-                model_id,
-                attempt,
-                max_retries + 1,
-                str(e),
-            )
             if attempt > max_retries:
-                logger.error("Exceeded maximum retries (%d) for Gemini model '%s'.", max_retries, model_id)
-                return None
-
+                raise FatalExtractionError(
+                    category=ErrorCategory.INVALID_RESPONSE,
+                    message=USER_FACING_ERROR_MESSAGES[ErrorCategory.INVALID_RESPONSE],
+                    technical_details=f"Empty response received from Gemini model {model_id} after {max_retries} retries.",
+                )
             time.sleep(backoff_seconds)
+            backoff_seconds *= 2.0
+
+        except FatalExtractionError:
+            raise
+        except Exception as e:
+            classified = classify_llm_exception(e, provider="gemini", model_id=model_id)
+            logger.warning(
+                "Gemini model '%s' attempt %d/%d failed (category=%s, fatal=%s): %s",
+                model_id,
+                attempt + 1,
+                max_retries + 1,
+                classified.category.value,
+                classified.is_fatal,
+                classified.technical_details,
+            )
+            # Immediate fail-fast: fatal error aborts retry loop and window processing
+            if classified.is_fatal:
+                raise FatalExtractionError(
+                    category=classified.category,
+                    message=classified.user_message,
+                    technical_details=classified.technical_details,
+                    status_code=classified.status_code,
+                ) from e
+
+            attempt += 1
+            if attempt > max_retries:
+                logger.error(
+                    "Exceeded maximum retries (%d) for Gemini model '%s' on transient error (category=%s).",
+                    max_retries,
+                    model_id,
+                    classified.category.value,
+                )
+                raise FatalExtractionError(
+                    category=classified.category,
+                    message=classified.user_message,
+                    technical_details=f"Exceeded max retries ({max_retries}) on transient failure: {classified.technical_details}",
+                    status_code=classified.status_code,
+                ) from e
+
+            sleep_time = min(classified.retry_after, 30.0) if classified.retry_after and classified.retry_after > 0 else backoff_seconds
+            time.sleep(sleep_time)
             backoff_seconds *= 2.0
 
     return None
@@ -602,6 +665,7 @@ def call_groq_window(
     """
     Calls Groq Chat Completions API with structured JSON output and exponential backoff.
     Uses the exact validated model_id (openai/gpt-oss-120b) selected by the administrator.
+    Fails fast immediately on fatal errors (e.g. quota exhausted, auth/permission failure).
     Retries up to max_retries on transient rate limits, timeouts, or network errors using the same model.
     """
     messages = [
@@ -623,26 +687,77 @@ def call_groq_window(
 
             if response.choices and response.choices[0].message and response.choices[0].message.content:
                 raw_text = response.choices[0].message.content.strip()
-                data = json.loads(raw_text)
-                return WindowExtractionLLMResponse(**data)
+                try:
+                    data = json.loads(raw_text)
+                    return WindowExtractionLLMResponse(**data)
+                except Exception as parse_err:
+                    attempt += 1
+                    logger.warning(
+                        "Groq model '%s' JSON parse failed on attempt %d: %s",
+                        model_id,
+                        attempt,
+                        str(parse_err),
+                    )
+                    if attempt > max_retries:
+                        raise FatalExtractionError(
+                            category=ErrorCategory.INVALID_RESPONSE,
+                            message=USER_FACING_ERROR_MESSAGES[ErrorCategory.INVALID_RESPONSE],
+                            technical_details=f"Unrecoverable malformed JSON response from Groq model {model_id}: {str(parse_err)}",
+                        ) from parse_err
+                    time.sleep(backoff_seconds)
+                    backoff_seconds *= 2.0
+                    continue
 
-            logger.warning("Empty response received from Groq model '%s'.", model_id)
-            return WindowExtractionLLMResponse(items=[], last_section_seen=None)
-
-        except Exception as e:
+            logger.warning("Empty response received from Groq model '%s' on attempt %d/%d.", model_id, attempt + 1, max_retries + 1)
             attempt += 1
-            logger.warning(
-                "Groq model '%s' attempt %d/%d failed: %s",
-                model_id,
-                attempt,
-                max_retries + 1,
-                str(e),
-            )
             if attempt > max_retries:
-                logger.error("Exceeded maximum retries (%d) for Groq model '%s'.", max_retries, model_id)
-                return None
-
+                raise FatalExtractionError(
+                    category=ErrorCategory.INVALID_RESPONSE,
+                    message=USER_FACING_ERROR_MESSAGES[ErrorCategory.INVALID_RESPONSE],
+                    technical_details=f"Empty response received from Groq model {model_id} after {max_retries} retries.",
+                )
             time.sleep(backoff_seconds)
+            backoff_seconds *= 2.0
+
+        except FatalExtractionError:
+            raise
+        except Exception as e:
+            classified = classify_llm_exception(e, provider="groq", model_id=model_id)
+            logger.warning(
+                "Groq model '%s' attempt %d/%d failed (category=%s, fatal=%s): %s",
+                model_id,
+                attempt + 1,
+                max_retries + 1,
+                classified.category.value,
+                classified.is_fatal,
+                classified.technical_details,
+            )
+            # Immediate fail-fast: fatal error aborts retry loop and window processing
+            if classified.is_fatal:
+                raise FatalExtractionError(
+                    category=classified.category,
+                    message=classified.user_message,
+                    technical_details=classified.technical_details,
+                    status_code=classified.status_code,
+                ) from e
+
+            attempt += 1
+            if attempt > max_retries:
+                logger.error(
+                    "Exceeded maximum retries (%d) for Groq model '%s' on transient error (category=%s).",
+                    max_retries,
+                    model_id,
+                    classified.category.value,
+                )
+                raise FatalExtractionError(
+                    category=classified.category,
+                    message=classified.user_message,
+                    technical_details=f"Exceeded max retries ({max_retries}) on transient failure: {classified.technical_details}",
+                    status_code=classified.status_code,
+                ) from e
+
+            sleep_time = min(classified.retry_after, 30.0) if classified.retry_after and classified.retry_after > 0 else backoff_seconds
+            time.sleep(sleep_time)
             backoff_seconds *= 2.0
 
     return None
@@ -733,46 +848,50 @@ def run_skill_extraction_job(
     # Provider-specific credential checks and client initialization
     if provider == "groq":
         if not settings.GROQ_API_KEY:
-            fail_job_record(job_id, "GROQ_API_KEY is not configured on the backend.")
+            fail_msg = USER_FACING_ERROR_MESSAGES[ErrorCategory.MISSING_API_KEY]
+            fail_job_record(job_id, fail_msg, error_category=ErrorCategory.MISSING_API_KEY.value)
             save_extraction_job(
                 job_id=job_id,
                 document_id=document_id,
                 status="failed",
-                error="GROQ_API_KEY is not configured on the backend.",
+                error=fail_msg,
             )
             return
         try:
             client = groq.Groq(api_key=settings.GROQ_API_KEY)
         except Exception as e:
+            classified = classify_llm_exception(e, "groq")
             logger.exception("Failed to initialize Groq Client: %s", str(e))
-            fail_job_record(job_id, f"Failed to initialize Groq client: {str(e)}")
+            fail_job_record(job_id, classified.user_message, error_category=classified.category.value)
             save_extraction_job(
                 job_id=job_id,
                 document_id=document_id,
                 status="failed",
-                error=f"Failed to initialize Groq client: {str(e)}",
+                error=classified.user_message,
             )
             return
     else:
         if not settings.GEMINI_API_KEY:
-            fail_job_record(job_id, "GEMINI_API_KEY is not configured on the backend.")
+            fail_msg = USER_FACING_ERROR_MESSAGES[ErrorCategory.MISSING_API_KEY]
+            fail_job_record(job_id, fail_msg, error_category=ErrorCategory.MISSING_API_KEY.value)
             save_extraction_job(
                 job_id=job_id,
                 document_id=document_id,
                 status="failed",
-                error="GEMINI_API_KEY is not configured on the backend.",
+                error=fail_msg,
             )
             return
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
         except Exception as e:
+            classified = classify_llm_exception(e, "gemini")
             logger.exception("Failed to initialize Google GenAI Client: %s", str(e))
-            fail_job_record(job_id, f"Failed to initialize GenAI client: {str(e)}")
+            fail_job_record(job_id, classified.user_message, error_category=classified.category.value)
             save_extraction_job(
                 job_id=job_id,
                 document_id=document_id,
                 status="failed",
-                error=f"Failed to initialize GenAI client: {str(e)}",
+                error=classified.user_message,
             )
             return
 
@@ -859,14 +978,73 @@ def run_skill_extraction_job(
         window_prompt = "\n".join(prompt_parts)
 
         # Call AI model with retry and category-specific system instruction
-        llm_resp = call_model_window(
-            provider=provider,
-            client=client,
-            window_prompt=window_prompt,
-            model_id=model_id,
-            system_instruction=system_instruction,
-            max_retries=3,
-        )
+        try:
+            llm_resp = call_model_window(
+                provider=provider,
+                client=client,
+                window_prompt=window_prompt,
+                model_id=model_id,
+                system_instruction=system_instruction,
+                max_retries=3,
+            )
+        except FatalExtractionError as fe:
+            logger.error(
+                "Fatal extraction error on window %d/%d (Job %s, Model %s): [%s] %s | Details: %s",
+                window_num,
+                total_windows,
+                job_id,
+                model_id,
+                fe.category.value,
+                fe.user_message,
+                fe.technical_details,
+            )
+            fail_job_record(job_id, fe.user_message, error_category=fe.category.value)
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                total_windows=total_windows,
+                processed_windows=windows_processed,
+                failed_windows=failed_windows + [{
+                    "window_index": w_idx,
+                    "pages": page_nums,
+                    "error": fe.user_message,
+                    "category": fe.category.value,
+                }],
+                items_count=len(all_extracted_items),
+                current_step=f"Extraction failed: {fe.user_message}",
+                error=fe.user_message,
+            )
+            return
+        except Exception as unexp:
+            classified = classify_llm_exception(unexp, provider)
+            logger.exception(
+                "Unexpected error during window %d/%d (Job %s, Model %s): [%s] %s",
+                window_num,
+                total_windows,
+                job_id,
+                model_id,
+                classified.category.value,
+                classified.user_message,
+            )
+            fail_job_record(job_id, classified.user_message, error_category=classified.category.value)
+            save_extraction_job(
+                job_id=job_id,
+                document_id=document_id,
+                status="failed",
+                total_windows=total_windows,
+                processed_windows=windows_processed,
+                failed_windows=failed_windows + [{
+                    "window_index": w_idx,
+                    "pages": page_nums,
+                    "error": classified.user_message,
+                    "category": classified.category.value,
+                }],
+                items_count=len(all_extracted_items),
+                current_step=f"Extraction failed: {classified.user_message}",
+                error=classified.user_message,
+            )
+            return
 
         if llm_resp is None:
             failed_windows.append({
@@ -1109,13 +1287,22 @@ def retry_failed_windows_for_job(job_id: str, admin_email: Optional[str] = None)
             prompt_parts.append(f"--- PAGE {p['page_number']} ---\n{p['text']}\n")
         prompt = "\n".join(prompt_parts)
 
-        llm_resp = call_model_window(
-            provider=provider,
-            client=client,
-            window_prompt=prompt,
-            model_id=model_id,
-            max_retries=3,
-        )
+        try:
+            llm_resp = call_model_window(
+                provider=provider,
+                client=client,
+                window_prompt=prompt,
+                model_id=model_id,
+                max_retries=3,
+            )
+        except FatalExtractionError as fe:
+            logger.error("Fatal error during retry for job %s: %s", job_id, fe.user_message)
+            still_failed.append(fw)
+            break
+        except Exception as unexp:
+            logger.exception("Unexpected error during retry for job %s: %s", job_id, str(unexp))
+            still_failed.append(fw)
+            break
         if llm_resp is None:
             still_failed.append(fw)
         else:

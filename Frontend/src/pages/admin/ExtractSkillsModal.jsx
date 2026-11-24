@@ -43,10 +43,12 @@ import {
 } from '@/lib/adminAuth';
 import {
   getNotificationPermission,
-  requestNotificationPermission,
+  getNotificationPreference,
+  toggleSkillExtractionNotifications,
   isNotificationSupported,
   notifySkillExtractionTerminalState,
 } from '@/lib/skillExtractionNotification';
+import NotificationTutorialModal from './NotificationTutorialModal';
 
 import geminiLogo from '/logos/gemini.svg';
 import groqLogo from '/logos/groq.svg';
@@ -151,6 +153,7 @@ export default function ExtractSkillsModal({
     current_step: '',
   });
   const [extractionError, setExtractionError] = useState(null);
+  const [extractionErrorCategory, setExtractionErrorCategory] = useState(null);
   const [extractedSkills, setExtractedSkills] = useState([]);
   const [isSkillsExtracted, setIsSkillsExtracted] = useState(false);
 
@@ -178,12 +181,70 @@ export default function ExtractSkillsModal({
   // Polling ref for cleanup
   const pollingRef = useRef(null);
 
-  // Desktop Notification Permission State for Skill Extraction Completion
+  // Desktop Notification State for Skill Extraction Completion
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission());
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(getNotificationPreference());
+  const [notificationFeedback, setNotificationFeedback] = useState(null);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  const handleToggleNotificationPermission = async () => {
-    const perm = await requestNotificationPermission();
-    setNotificationPermission(perm);
+  const isNotificationActive = notificationPermission === 'granted' && isNotificationEnabled;
+
+  // Real-time permission checking when returning to this tab
+  useEffect(() => {
+    const handleRecheckPermission = () => {
+      const current = getNotificationPermission();
+      setNotificationPermission((prevPerm) => {
+        if (prevPerm !== current) {
+          if (current === 'granted') {
+            setNotificationPreference(true);
+            setIsNotificationEnabled(true);
+            setNotificationFeedback('Chrome desktop notifications are now active!');
+            setTimeout(() => setNotificationFeedback(null), 5000);
+          }
+          return current;
+        }
+        return prevPerm;
+      });
+      setIsNotificationEnabled(getNotificationPreference());
+    };
+
+    window.addEventListener('focus', handleRecheckPermission);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleRecheckPermission();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleRecheckPermission);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  const handleToggleNotification = async () => {
+    // If notifications are blocked in browser, clicking opens the step-by-step tutorial!
+    if (notificationPermission === 'denied') {
+      setIsTutorialOpen(true);
+      return;
+    }
+
+    const res = await toggleSkillExtractionNotifications();
+    if (res.permission === 'denied') {
+      setIsTutorialOpen(true);
+      setNotificationPermission('denied');
+      setIsNotificationEnabled(false);
+      return;
+    }
+
+    setNotificationPermission(res.permission);
+    setIsNotificationEnabled(res.active);
+    if (res.message) {
+      setNotificationFeedback(res.message);
+      setTimeout(() => {
+        setNotificationFeedback((prev) => (prev === res.message ? null : prev));
+      }, 6000);
+    }
   };
 
   const startPollingJob = (jobId, fallbackModelDisplayName = null, fallbackExtMethod = null) => {
@@ -264,6 +325,7 @@ export default function ExtractSkillsModal({
           setIsExtractingSkills(false);
           const failureMessage = statusRes.error || 'Skill extraction failed. Please retry.';
           setExtractionError(failureMessage);
+          setExtractionErrorCategory(statusRes.error_category || null);
 
           // Trigger native Windows desktop notification on terminal failure
           notifySkillExtractionTerminalState({
@@ -562,6 +624,7 @@ export default function ExtractSkillsModal({
     setActiveTab('skills');
     setIsExtractingSkills(true);
     setExtractionError(null);
+    setExtractionErrorCategory(null);
     setExtractionProgress({
       windows_done: 0,
       total_windows: 0,
@@ -669,6 +732,7 @@ export default function ExtractSkillsModal({
     setSaveSkillsSuccess(null);
     setSaveSkillsError(null);
     setExtractionError(null);
+    setExtractionErrorCategory(null);
   };
 
   // Filter skills by search query and skill_type
@@ -745,28 +809,76 @@ export default function ExtractSkillsModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0 ml-3">
-            {/* Desktop Notification Permission Control */}
-            {notificationPermission === 'default' && (
+            {/* Desktop Notification Toggle Control */}
+            {isNotificationSupported() ? (
               <button
                 type="button"
-                onClick={handleToggleNotificationPermission}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2D0717] hover:bg-[#3D0A1E] border border-[#F5C563]/40 hover:border-[#F5C563] text-[#F5C563] text-xs font-semibold tracking-wide transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Click to enable Windows desktop notifications when skill extraction finishes"
+                onClick={handleToggleNotification}
+                className={`group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer shadow-sm active:scale-95 ${
+                  isNotificationActive
+                    ? 'bg-emerald-950/70 hover:bg-emerald-900/80 border-emerald-500/50 hover:border-emerald-400 text-emerald-300'
+                    : notificationPermission === 'denied'
+                    ? 'bg-rose-950/50 hover:bg-rose-900/60 border-rose-500/40 hover:border-rose-500/70 text-rose-300'
+                    : notificationPermission === 'granted'
+                    ? 'bg-[#200410] hover:bg-[#2F0619] border-[#850E35]/60 hover:border-[#850E35] text-[#FFBAC7]/70 hover:text-white'
+                    : 'bg-[#2D0717] hover:bg-[#3D0A1E] border-[#F5C563]/40 hover:border-[#F5C563] text-[#F5C563]'
+                }`}
+                title={
+                  isNotificationActive
+                    ? 'Windows desktop notifications: ON. Click to turn OFF.'
+                    : notificationPermission === 'denied'
+                    ? 'Notifications are blocked in your browser. Click for instructions to allow them.'
+                    : notificationPermission === 'granted'
+                    ? 'Windows desktop notifications: OFF. Click to turn ON.'
+                    : 'Click to enable Windows desktop notifications when skill extraction finishes'
+                }
               >
-                <Bell size={13} />
-                <span className="hidden sm:inline">Enable Notifications</span>
-                <span className="sm:hidden">Notify</span>
+                {isNotificationActive ? (
+                  <BellRing size={13} className="text-emerald-400 shrink-0" />
+                ) : notificationPermission === 'denied' ? (
+                  <BellOff size={13} className="text-rose-400 shrink-0" />
+                ) : (
+                  <Bell
+                    size={13}
+                    className={
+                      notificationPermission === 'granted'
+                        ? 'text-[#FFBAC7]/60 shrink-0'
+                        : 'text-[#F5C563] shrink-0'
+                    }
+                  />
+                )}
+
+                <span className="hidden sm:inline">
+                  {isNotificationActive
+                    ? 'Notifications ON'
+                    : notificationPermission === 'denied'
+                    ? 'Notifications Blocked'
+                    : notificationPermission === 'granted'
+                    ? 'Notifications OFF'
+                    : 'Enable Notifications'}
+                </span>
+                <span className="sm:hidden">
+                  {isNotificationActive ? 'ON' : notificationPermission === 'denied' ? 'Blocked' : 'Notify'}
+                </span>
+
+                {/* Animated toggle pill switch */}
+                {notificationPermission !== 'denied' && (
+                  <span
+                    className={`inline-flex items-center h-4 w-7 rounded-full p-0.5 transition-colors ${
+                      isNotificationActive ? 'bg-emerald-500/40' : 'bg-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`h-3 w-3 rounded-full transition-transform transform shadow-sm ${
+                        isNotificationActive
+                          ? 'translate-x-3 bg-emerald-400'
+                          : 'translate-x-0 bg-[#FFBAC7]/60'
+                      }`}
+                    />
+                  </span>
+                )}
               </button>
-            )}
-            {notificationPermission === 'denied' && (
-              <div
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#200410] border border-rose-500/40 text-rose-300/80 text-xs"
-                title="Notifications are blocked in your browser site settings. Enable them in site permissions if you wish to receive completion alerts."
-              >
-                <BellOff size={13} className="text-rose-400" />
-                <span className="hidden md:inline">Notifications Blocked</span>
-              </div>
-            )}
+            ) : null}
 
             <button
               type="button"
@@ -778,6 +890,38 @@ export default function ExtractSkillsModal({
             </button>
           </div>
         </div>
+
+        {/* Notification feedback / instructions banner */}
+        {notificationFeedback && (
+          <div
+            className={`px-5 py-2.5 flex items-center justify-between gap-3 text-xs border-b transition-colors shrink-0 ${
+              notificationPermission === 'denied'
+                ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+                : isNotificationActive
+                ? 'bg-emerald-950/70 border-emerald-500/30 text-emerald-200'
+                : 'bg-[#250514] border-[#850E35]/40 text-[#FFBAC7]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              {notificationPermission === 'denied' ? (
+                <ShieldAlert size={15} className="text-rose-400 shrink-0" />
+              ) : isNotificationActive ? (
+                <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+              ) : (
+                <Info size={15} className="text-[#F5C563] shrink-0" />
+              )}
+              <span className="leading-snug">{notificationFeedback}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotificationFeedback(null)}
+              className="text-[#FFBAC7]/60 hover:text-white p-1 rounded-md transition-colors shrink-0 cursor-pointer"
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {/* =========================================================
             2. THREE-TAB SWITCHER BAR
@@ -999,25 +1143,6 @@ export default function ExtractSkillsModal({
                           </span>
                         </div>
                       </div>
-
-                      {/* Desktop Notification Status / Prompt */}
-                      <div className="max-w-md mx-auto pt-1">
-                        {notificationPermission === 'default' && (
-                          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#2A0615] border border-[#F5C563]/30 text-xs text-[#FFBAC7]/90 text-left">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Bell size={15} className="text-[#F5C563] shrink-0" />
-                              <span className="truncate">Notify me on Windows when extraction completes</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleToggleNotificationPermission}
-                              className="px-3 py-1 rounded-lg bg-[#F5C563] hover:bg-[#E8B145] text-[#2B0712] font-extrabold text-xs tracking-wide transition-colors shrink-0 cursor-pointer shadow-sm"
-                            >
-                              Enable
-                            </button>
-                          </div>
-                        )}
-                      </div>
                       <p className="text-[11px] text-[#FFBAC7]/50 italic">
                         Model locked for this extraction job. Preserving exact quotations, character matching, and confidence.
                       </p>
@@ -1026,26 +1151,45 @@ export default function ExtractSkillsModal({
 
                   {/* State 2: Extraction Failure with Retry Button */}
                   {!isExtractingSkills && extractionError && (
-                    <div className="rounded-2xl border border-rose-500/50 bg-rose-950/80 p-6 space-y-3 text-left">
-                      <div className="flex items-center gap-2.5 text-rose-200 font-bold text-sm">
-                        <AlertCircle size={18} className="text-rose-400 shrink-0" />
-                        <span>Skill Extraction Error</span>
+                    <div className="rounded-2xl border border-rose-500/50 bg-rose-950/80 p-6 space-y-4 text-left shadow-xl shadow-rose-950/20">
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 text-rose-200 font-bold text-sm">
+                          <AlertCircle size={18} className="text-rose-400 shrink-0" />
+                          <span>Skill Extraction Failed</span>
+                        </div>
+                        {extractionErrorCategory && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-rose-900/60 border border-rose-500/40 text-[10px] font-semibold text-rose-300 uppercase tracking-wider">
+                            {extractionErrorCategory.replace(/_/g, ' ')}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-rose-200/90 leading-relaxed font-mono">
+                      <p className="text-xs text-rose-100/90 leading-relaxed bg-black/30 p-3.5 rounded-xl border border-rose-500/20">
                         {extractionError}
                       </p>
-                      <div className="pt-2 flex items-center gap-3">
+                      <div className="pt-1 flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           onClick={handleStartSkillExtraction}
-                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md inline-flex items-center gap-1.5"
                         >
-                          Retry Skill Extraction
+                          <RefreshCw size={13} />
+                          <span>Retry Extraction</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExtractionError(null);
+                            setExtractionErrorCategory(null);
+                          }}
+                          className="px-4 py-2 rounded-xl bg-[#200410] border border-[#850E35]/60 hover:bg-[#36081B] text-xs font-semibold text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <Cpu size={13} className="text-[#F5C563]" />
+                          <span>Choose Another Model</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setActiveTab('occupations')}
-                          className="px-4 py-2 rounded-xl bg-[#200410] border border-[#850E35]/60 hover:bg-[#36081B] text-xs font-semibold text-white transition-colors cursor-pointer"
+                          className="px-4 py-2 rounded-xl bg-[#200410] border border-[#850E35]/60 hover:bg-[#36081B] text-xs font-semibold text-[#FFBAC7]/80 transition-colors cursor-pointer"
                         >
                           Review Occupations
                         </button>
@@ -1869,14 +2013,27 @@ export default function ExtractSkillsModal({
                 ) : (
                   <>
                     {extractionError && (
-                      <button
-                        type="button"
-                        onClick={handleStartSkillExtraction}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
-                      >
-                        <RefreshCw size={14} />
-                        <span>Retry Extraction</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleStartSkillExtraction}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#F5C563] to-[#D99B26] hover:brightness-105 text-[#2B0712] text-xs font-bold transition-all cursor-pointer shadow-md"
+                        >
+                          <RefreshCw size={14} />
+                          <span>Retry Extraction</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExtractionError(null);
+                            setExtractionErrorCategory(null);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#850E35]/60 bg-[#200410] hover:bg-[#36081B] text-[#FFA8B8] hover:text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                        >
+                          <Cpu size={14} className="text-[#F5C563]" />
+                          <span>Change Model</span>
+                        </button>
+                      </div>
                     )}
 
                     <div className="flex items-center gap-2">
@@ -2019,6 +2176,18 @@ export default function ExtractSkillsModal({
             )}
           </div>
         </div>
+
+        {/* Interactive Step-by-Step Tutorial for Blocked Notifications */}
+        <NotificationTutorialModal
+          isOpen={isTutorialOpen}
+          onClose={() => setIsTutorialOpen(false)}
+          onPermissionGranted={() => {
+            setNotificationPermission('granted');
+            setIsNotificationEnabled(true);
+            setNotificationFeedback('Chrome desktop notifications are now active!');
+            setTimeout(() => setNotificationFeedback(null), 5000);
+          }}
+        />
       </div>
     </div>,
     window.document.body

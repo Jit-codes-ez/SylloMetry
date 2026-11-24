@@ -6,11 +6,13 @@
  * - Skill extraction completions only.
  * - Uses the native Browser Notifications API.
  * - Explicit user opt-in required (never auto-requested on page load).
+ * - Full user toggle support (ON/OFF) persisted in localStorage.
  * - Guaranteed single notification per extraction job (deduplication via jobId & sessionStorage).
  * - Safe fallback: does not throw or break extraction if notifications are disabled/unsupported.
  */
 
 const NOTIFIED_JOBS_STORAGE_KEY = 'syllo_notified_extraction_jobs';
+const NOTIFICATION_PREF_STORAGE_KEY = 'syllo_skill_extraction_notifications_enabled';
 
 // In-memory set of notified job IDs for instant zero-latency deduplication
 const inMemoryNotifiedJobs = new Set();
@@ -26,7 +28,7 @@ try {
       }
     }
   }
-} catch (e) {
+} catch {
   // Session storage access issue in restrictive contexts; safely ignore
 }
 
@@ -50,26 +52,172 @@ export function getNotificationPermission() {
   if (!isNotificationSupported()) {
     return 'unsupported';
   }
-  return Notification.permission;
+  try {
+    return Notification.permission;
+  } catch {
+    return 'unsupported';
+  }
+}
+
+/**
+ * Retrieves the user-level notification preference (persisted in localStorage).
+ * Defaults to true if browser permission is already granted, false otherwise.
+ * @returns {boolean}
+ */
+export function getNotificationPreference() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return false;
+  }
+  try {
+    const stored = window.localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+    // If not explicitly set, default to true only if permission is already granted
+    return getNotificationPermission() === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Persists the user-level notification preference in localStorage.
+ * @param {boolean} enabled
+ */
+export function setNotificationPreference(enabled) {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Storage access issue in private browsing; safely ignore
+  }
+}
+
+/**
+ * Checks whether skill extraction desktop notifications are currently active:
+ * Browser must support them, permission must be 'granted', and user toggle must be enabled.
+ * @returns {boolean}
+ */
+export function isExtractionNotificationActive() {
+  return (
+    isNotificationSupported() &&
+    getNotificationPermission() === 'granted' &&
+    getNotificationPreference() === true
+  );
 }
 
 /**
  * Requests browser notification permission upon an explicit user action.
+ * Supports both modern Promise-based and legacy callback-based browser APIs safely.
  * Never invoke automatically on page load.
  * @returns {Promise<'granted' | 'denied' | 'default' | 'unsupported'>}
  */
-export async function requestNotificationPermission() {
+export function requestNotificationPermission() {
   if (!isNotificationSupported()) {
-    return 'unsupported';
+    return Promise.resolve('unsupported');
   }
 
-  try {
-    const permission = await Notification.requestPermission();
-    return permission;
-  } catch (err) {
-    console.warn('Failed to request notification permission:', err);
-    return getNotificationPermission();
+  return new Promise((resolve) => {
+    let resolved = false;
+    const safeResolve = (perm) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(perm || getNotificationPermission());
+      }
+    };
+
+    try {
+      // Notification.requestPermission in some browsers takes a callback, in others returns a Promise
+      const p = Notification.requestPermission((callbackResult) => {
+        safeResolve(callbackResult);
+      });
+
+      if (p && typeof p.then === 'function') {
+        p.then((promiseResult) => {
+          safeResolve(promiseResult);
+        }).catch((err) => {
+          console.warn('Error in Notification.requestPermission promise:', err);
+          safeResolve(getNotificationPermission());
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to call Notification.requestPermission:', err);
+      safeResolve(getNotificationPermission());
+    }
+  });
+}
+
+/**
+ * Toggles the notification state on user click.
+ * Handles permission request if default, instructions if denied, and toggling if granted.
+ *
+ * @returns {Promise<{
+ *   supported: boolean,
+ *   permission: 'granted' | 'denied' | 'default' | 'unsupported',
+ *   active: boolean,
+ *   message: string
+ * }>}
+ */
+export async function toggleSkillExtractionNotifications() {
+  if (!isNotificationSupported()) {
+    return {
+      supported: false,
+      permission: 'unsupported',
+      active: false,
+      message: 'Desktop notifications are not supported in this browser.',
+    };
   }
+
+  const currentPerm = getNotificationPermission();
+
+  if (currentPerm === 'denied') {
+    return {
+      supported: true,
+      permission: 'denied',
+      active: false,
+      message:
+        'Notifications are blocked in your browser site settings. Click the lock/settings icon in your browser address bar, set Notifications to "Allow", and try again.',
+    };
+  }
+
+  if (currentPerm === 'default') {
+    const requestedPerm = await requestNotificationPermission();
+    if (requestedPerm === 'granted') {
+      setNotificationPreference(true);
+      return {
+        supported: true,
+        permission: 'granted',
+        active: true,
+        message: 'Desktop notifications enabled for skill extraction completion.',
+      };
+    } else {
+      setNotificationPreference(false);
+      return {
+        supported: true,
+        permission: requestedPerm,
+        active: false,
+        message:
+          requestedPerm === 'denied'
+            ? 'Notifications were blocked in your browser settings. You can allow them anytime from the address bar.'
+            : 'Notification permission was not granted.',
+      };
+    }
+  }
+
+  // When currentPerm === 'granted': toggle user preference between ON and OFF
+  const currentPref = getNotificationPreference();
+  const nextPref = !currentPref;
+  setNotificationPreference(nextPref);
+
+  return {
+    supported: true,
+    permission: 'granted',
+    active: nextPref,
+    message: nextPref
+      ? 'Skill extraction desktop notifications turned ON.'
+      : 'Skill extraction desktop notifications turned OFF.',
+  };
 }
 
 /**
@@ -92,7 +240,9 @@ export function hasJobBeenNotified(jobId) {
         }
       }
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   return false;
 }
@@ -110,7 +260,9 @@ export function markJobAsNotified(jobId) {
       const storedList = Array.from(inMemoryNotifiedJobs);
       window.sessionStorage.setItem(NOTIFIED_JOBS_STORAGE_KEY, JSON.stringify(storedList));
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -139,8 +291,8 @@ export function notifySkillExtractionTerminalState({
   errorMessage,
   onNotificationClick,
 }) {
-  // 1. Guard against unsupported or unpermitted states
-  if (!isNotificationSupported() || Notification.permission !== 'granted') {
+  // 1. Guard: desktop notifications must be active (supported, browser permission granted, user preference enabled)
+  if (!isExtractionNotificationActive()) {
     return null;
   }
 
@@ -154,8 +306,8 @@ export function notifySkillExtractionTerminalState({
 
   const cleanDocName = documentName ? String(documentName).trim() : 'Document';
 
-  let title = '';
-  let body = '';
+  let title;
+  let body;
 
   // Outcome A: Successful extraction
   if (status === 'completed' || status === 'done') {
@@ -198,7 +350,9 @@ export function notifySkillExtractionTerminalState({
       event.preventDefault();
       try {
         window.focus();
-      } catch {}
+      } catch {
+        // ignore
+      }
 
       if (typeof onNotificationClick === 'function') {
         try {
@@ -208,9 +362,22 @@ export function notifySkillExtractionTerminalState({
         }
       }
 
+      // Also dispatch custom event for global app listeners (like AdminDashboard)
+      try {
+        window.dispatchEvent(
+          new CustomEvent('syllo:open-extraction-review', {
+            detail: { jobId, documentId },
+          })
+        );
+      } catch {
+        // ignore
+      }
+
       try {
         notification.close();
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
 
     return notification;

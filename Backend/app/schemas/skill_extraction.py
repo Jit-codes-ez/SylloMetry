@@ -210,6 +210,7 @@ class JobStatusResponse(BaseModel):
     summary: Optional[ExtractionSummary] = None
     session_id: Optional[str] = None
     error: Optional[str] = None
+    error_category: Optional[str] = None
     selected_model: Optional[str] = None
     model_key: Optional[str] = None
     extraction_method: Optional[str] = None

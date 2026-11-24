@@ -39,32 +39,63 @@ import {
   getDocumentExtractionStatus,
 } from '@/lib/adminAuth';
 
+import geminiLogo from '/logos/gemini.svg';
+import groqLogo from '/logos/groq.svg';
+
+const getProviderLogo = (model) => {
+  if (!model) return geminiLogo;
+  const prov = String(model.provider || '').toLowerCase();
+  const mId = String(model.model_id || '').toLowerCase();
+  const mKey = String(model.model_key || '').toLowerCase();
+  const isGroq =
+    prov === 'groq' ||
+    mId.startsWith('openai/') ||
+    mId.includes('groq') ||
+    mKey.includes('groq') ||
+    mKey.includes('gpt');
+  return isGroq ? groqLogo : geminiLogo;
+};
+
+const getProviderAlt = (model) => {
+  if (!model) return 'Google Gemini logo';
+  const prov = String(model.provider || '').toLowerCase();
+  const mId = String(model.model_id || '').toLowerCase();
+  const mKey = String(model.model_key || '').toLowerCase();
+  const isGroq =
+    prov === 'groq' ||
+    mId.startsWith('openai/') ||
+    mId.includes('groq') ||
+    mKey.includes('groq') ||
+    mKey.includes('gpt');
+  return isGroq ? 'Groq logo' : 'Google Gemini logo';
+};
+
 const FALLBACK_GEMINI_MODELS = [
+  {
+    model_key: 'gemini-3.1-flash-lite',
+    model_id: 'gemini-3.1-flash-lite',
+    provider: 'Google Gemini',
+    display_name: 'Gemini 3.1 Flash-Lite',
+    tag: '(Standard)',
+    description: 'Standard primary extraction option optimized for rapid document processing, balanced consistency, and low latency.',
+    is_enabled: true,
+  },
   {
     model_key: 'gemini-3.5-flash-lite',
     model_id: 'gemini-3.5-flash-lite',
     provider: 'Google Gemini',
     display_name: 'Gemini 3.5 Flash-Lite',
-    tag: 'Better',
-    description: 'Alternative high-throughput model offering an improved balance of speed, cost efficiency, and extraction accuracy.',
+    tag: 'Most Reliable',
+    description: 'Most reliable extraction model offering strict negative constraint adherence, comprehensive extraction accuracy, and high quality.',
     is_enabled: true,
   },
   {
     model_key: 'gpt-oss-120b',
     model_id: 'openai/gpt-oss-120b',
     provider: 'Groq',
-    display_name: 'GPT-OSS 120B (Groq)',
-    tag: 'Primary',
-    description: 'A large open-weight reasoning model for structured technical skill and competency extraction.',
-    is_enabled: true,
-  },
-  {
-    model_key: 'gemini-3.1-flash-lite',
-    model_id: 'gemini-3.1-flash-lite',
-    provider: 'Google Gemini',
-    display_name: 'Gemini 3.1 Flash-Lite',
-    tag: null,
-    description: 'Lightweight and responsive extraction option optimized for rapid document processing and low latency.',
+    display_name: 'GPT-OSS 120B',
+    tag: 'Faster',
+    description: 'Faster open-weight reasoning model via Groq LPU inference for high-speed technical skill extraction.',
     is_enabled: true,
   },
 ];
@@ -116,7 +147,7 @@ export default function ExtractSkillsModal({
 
   // Multi-Model AI Extraction States (Gemini & Groq)
   const [availableModels, setAvailableModels] = useState(FALLBACK_GEMINI_MODELS);
-  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite'); // Gemini 3.5 Flash-Lite default
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite'); // Gemini 3.1 Flash-Lite (Standard) (Primary/Default) default
   const [activeJobModelDisplayName, setActiveJobModelDisplayName] = useState(null);
   const [activeJobExtractionMethod, setActiveJobExtractionMethod] = useState(null);
 
@@ -931,7 +962,7 @@ export default function ExtractSkillsModal({
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#850E35]/40 pb-5">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-white font-bold text-base">
-                            <Sparkles size={18} className="text-[#F5C563]" />
+                            <Cpu size={18} className="text-[#F5C563]" />
                             <h4>Select AI Extraction Model</h4>
                           </div>
                           <p className="text-xs text-[#FFBAC7]/70">
@@ -965,22 +996,41 @@ export default function ExtractSkillsModal({
                               <div className="space-y-2.5">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    {model.tag && (
-                                      <span
-                                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                                          model.tag === 'Primary'
-                                            ? 'bg-[#F5C563]/20 border-[#F5C563]/60 text-[#F5C563]'
-                                            : model.tag === 'Better'
-                                            ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                                            : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
-                                        }`}
-                                      >
-                                        {model.tag}
-                                      </span>
-                                    )}
-                                    <span className="text-[10px] font-medium tracking-wide px-2 py-0.5 rounded-md bg-[#2B0715] border border-[#850E35]/40 text-[#FFBAC7]/80">
-                                      {providerName}
-                                    </span>
+                                    {(() => {
+                                      if (!model.tag) return null;
+                                      const raw = String(model.tag).trim();
+                                      const parenMatches = raw.match(/\(([^)]+)\)/g);
+                                      const tagList = parenMatches && parenMatches.length > 0
+                                        ? parenMatches.map((m) => m.replace(/[()]/g, '').trim())
+                                        : [raw.replace(/[()]/g, '').trim()];
+
+                                      return tagList.map((tagText, tIdx) => {
+                                        const isPrimaryDefault = /primary|default/i.test(tagText);
+                                        const isMostReliable = /reliable/i.test(tagText);
+                                        const isFaster = /fast/i.test(tagText);
+                                        const isStandard = /standard/i.test(tagText);
+
+                                        let colorClass = 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300';
+                                        if (isPrimaryDefault) {
+                                          colorClass = 'bg-[#F5C563]/20 border-[#F5C563]/60 text-[#F5C563]';
+                                        } else if (isMostReliable) {
+                                          colorClass = 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300';
+                                        } else if (isFaster) {
+                                          colorClass = 'bg-purple-500/20 border-purple-500/50 text-purple-300';
+                                        } else if (isStandard) {
+                                          colorClass = 'bg-sky-500/20 border-sky-500/50 text-sky-300';
+                                        }
+
+                                        return (
+                                          <span
+                                            key={tIdx}
+                                            className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border ${colorClass}`}
+                                          >
+                                            {tagText}
+                                          </span>
+                                        );
+                                      });
+                                    })()}
                                   </div>
                                   <div
                                     className={`h-4 w-4 rounded-full border flex items-center justify-center transition-all ${
@@ -995,17 +1045,27 @@ export default function ExtractSkillsModal({
                                   </div>
                                 </div>
 
-                                <div>
-                                  <h5
-                                    className={`text-sm font-bold tracking-wide transition-colors ${
-                                      isSelected ? 'text-white' : 'text-[#FFBAC7]'
-                                    }`}
-                                  >
-                                    {model.display_name}
-                                  </h5>
-                                  <p className="text-[11px] font-mono text-[#FFBAC7]/50 mt-0.5">
-                                    {model.model_id}
-                                  </p>
+                                <div className="flex items-center gap-3 pt-0.5">
+                                  <div className="w-8 h-8 rounded-xl bg-[#260514] border border-[#850E35]/50 flex items-center justify-center p-1.5 shrink-0 shadow-inner">
+                                    <img
+                                      src={getProviderLogo(model)}
+                                      alt={getProviderAlt(model)}
+                                      className="w-full h-full object-contain"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h5
+                                      className={`text-sm font-bold tracking-wide transition-colors truncate ${
+                                        isSelected ? 'text-white' : 'text-[#FFBAC7]'
+                                      }`}
+                                    >
+                                      {model.display_name}
+                                    </h5>
+                                    <p className="text-[11px] font-mono text-[#FFBAC7]/50 mt-0.5 truncate">
+                                      {model.model_id}
+                                    </p>
+                                  </div>
                                 </div>
 
                                 <p className="text-xs text-[#FFBAC7]/70 leading-relaxed">
@@ -1041,7 +1101,12 @@ export default function ExtractSkillsModal({
                       ) : (
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#2D0717] border border-[#F5C563]/40 text-xs text-[#F5C563]">
                           <div className="flex items-center gap-2">
-                            <Sparkles size={14} className="shrink-0" />
+                            <img
+                              src={getProviderLogo(availableModels.find((m) => m.model_key === selectedModel))}
+                              alt=""
+                              aria-hidden="true"
+                              className="w-4 h-4 object-contain shrink-0"
+                            />
                             <span>
                               Ready to extract with{' '}
                               <strong>

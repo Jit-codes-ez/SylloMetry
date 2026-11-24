@@ -685,8 +685,8 @@ def run_skill_extraction_job(
     job_id: str,
     document_id: int,
     dry_run: bool,
-    model_key: str = "gemini-3.5-flash-lite",
-    model_id: str = "gemini-3.5-flash-lite",
+    model_key: str = "gemini-3.1-flash-lite",
+    model_id: str = "gemini-3.1-flash-lite",
     admin_email: Optional[str] = None,
 ) -> None:
     """

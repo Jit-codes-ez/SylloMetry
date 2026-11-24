@@ -28,19 +28,31 @@ AIModelConfig = GeminiModelConfig
 
 # -----------------------------------------------------------------------------
 # Supported Models Registry (Strict Backend Allowlist)
-# Exactly 3 Models:
-# 1. Gemini 3.5 Flash-Lite (default)
-# 2. GPT-OSS 120B (Groq) (Primary)
-# 3. Gemini 3.1 Flash-Lite
+# Exactly 3 Models in Display Order:
+# 1. Gemini 3.1 Flash-Lite (Standard) (Primary/Default)
+# 2. Gemini 3.5 Flash-Lite (Most Reliable)
+# 3. GPT-OSS 120B (Groq) (Faster)
 # -----------------------------------------------------------------------------
+DEFAULT_MODEL_KEY = "gemini-3.1-flash-lite"
+
 SUPPORTED_GEMINI_MODELS: Dict[str, GeminiModelConfig] = {
+    "gemini-3.1-flash-lite": GeminiModelConfig(
+        model_key="gemini-3.1-flash-lite",
+        model_id="gemini-3.1-flash-lite",
+        provider="gemini",
+        display_name="Gemini 3.1 Flash-Lite",
+        tag="(Standard) (Primary/Default)",
+        description="Standard primary extraction option optimized for rapid document processing, balanced consistency, and low latency.",
+        is_enabled=True,
+        generation_config={"temperature": 0.0},
+    ),
     "gemini-3.5-flash-lite": GeminiModelConfig(
         model_key="gemini-3.5-flash-lite",
         model_id="gemini-3.5-flash-lite",
         provider="gemini",
         display_name="Gemini 3.5 Flash-Lite",
-        tag="Better",
-        description="Alternative high-throughput model offering an improved balance of speed, cost efficiency, and extraction accuracy.",
+        tag="Most Reliable",
+        description="Most reliable extraction model offering strict negative constraint adherence, comprehensive extraction accuracy, and high quality.",
         is_enabled=True,
         generation_config={"temperature": 0.0},
     ),
@@ -49,18 +61,8 @@ SUPPORTED_GEMINI_MODELS: Dict[str, GeminiModelConfig] = {
         model_id="openai/gpt-oss-120b",
         provider="groq",
         display_name="GPT-OSS 120B (Groq)",
-        tag="Primary",
-        description="A large open-weight reasoning model for structured technical skill and competency extraction.",
-        is_enabled=True,
-        generation_config={"temperature": 0.0},
-    ),
-    "gemini-3.1-flash-lite": GeminiModelConfig(
-        model_key="gemini-3.1-flash-lite",
-        model_id="gemini-3.1-flash-lite",
-        provider="gemini",
-        display_name="Gemini 3.1 Flash-Lite",
-        tag=None,
-        description="Lightweight and responsive extraction option optimized for rapid document processing and low latency.",
+        tag="Faster",
+        description="Faster open-weight reasoning model via Groq LPU inference for high-speed technical skill extraction.",
         is_enabled=True,
         generation_config={"temperature": 0.0},
     ),
